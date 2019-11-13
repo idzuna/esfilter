@@ -1,0 +1,26 @@
+﻿doctype html
+html
+  head
+    title=param.folder + " の画像一覧 - ESFilter"
+  body
+    p
+      a(href="..") トップ
+      =" | "
+      a(href="../filters") フィルター設定
+      =" | "
+      a(href="../log") ログ
+    h1=param.folder + " の画像一覧"
+    hr
+    ul
+      for file in param.files
+        li
+          a(href=param.folder + "/" + file)
+            img(src=param.folder + "/" + file + "?type=thumb")
+            span=file
+    hr
+    p
+      a(href="..") トップ
+      =" | "
+      a(href="../filters") フィルター設定
+      =" | "
+      a(href="../log") ログ

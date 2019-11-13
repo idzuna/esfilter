@@ -1,0 +1,82 @@
+﻿doctype html
+html
+  head
+    title フィルター設定 - ESFilter
+    script(src="scripts/filters.js")
+    style.
+      th {
+        background-color: silver;
+      }
+      table, td, th {
+        border: 1px solid gray;
+      }
+      tbody tr:hover {
+        background-color: #eeeeee;
+      }
+      .selected {
+        background-color: #ffdddd !important;
+      }
+  body(onload="selectDefault();")
+    p
+      a(href=".") トップ
+      =" | "
+      a(href="filters") フィルター設定
+      =" | "
+      a(href="log") ログ
+    h1 フィルター設定
+    hr
+    if param.status === "error"
+      div#status 操作に失敗しました
+    h2 フィルターの自動実行
+    p
+      if (param.isAutoFilterEnabled)
+        ="自動実行は有効です - "
+        a(href="javascript:void(0);" onclick="post('autofilter/disable');") 無効にする
+      else
+        ="自動実行は無効です - "
+        a(href="javascript:void(0);" onclick="post('autofilter/enable');") 有効にする
+        =" | "
+        a(href="javascript:void(0);" onclick="post('autofilter/once');") 単発で実行する
+    hr
+    h2 フィルター一覧
+    table
+      thead
+        tr
+          th
+          th フィルタ名
+          th 分類先フォルダー
+          th 自動実行
+          th
+      tbody
+        for filter, index in param.filters
+          tr(onclick="document.getElementsByName('filter')[" + index + "].checked=true;onradiochange();")
+            td
+              input(type="radio" name="filter" value=filter.name)
+            td=filter.name
+            td=filter.folder
+            td=(filter.enabled ? "有効" : "無効")
+            td
+              a(href="filters/" + filter.name) 編集
+    p
+      a(href="javascript:void(0);" onclick="run();") 単独で実行する
+      =" | "
+      a(href="javascript:void(0);" onclick="enable();") 有効にする
+      =" | "
+      a(href="javascript:void(0);" onclick="disable();") 無効にする
+      =" | "
+      a(href="javascript:void(0);" onclick="up();") 優先順位を上げる
+      =" | "
+      a(href="javascript:void(0);" onclick="down();") 優先順位を下げる
+      =" | "
+      a(href="javascript:void(0);" onclick="newfilter();") 新規作成
+      =" | "
+      a(href="javascript:void(0);" onclick="rename();") 名前を変更する
+      =" | "
+      a(href="javascript:void(0);" onclick="remove();") 削除する
+    hr
+    p
+      a(href=".") トップ
+      =" | "
+      a(href="filters") フィルター設定
+      =" | "
+      a(href="log") ログ

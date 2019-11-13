@@ -1,0 +1,29 @@
+﻿doctype html
+html
+  head
+    title ESFilter
+  body
+    p
+      a(href=".") トップ
+      =" | "
+      a(href="filters") フィルター設定
+      =" | "
+      a(href="log") ログ
+    h1 ESFilter
+    hr
+    p
+      if (param.isAutoFilterEnabled)
+        ="フィルター自動実行は有効です"
+      else
+        ="フィルター自動実行は無効です"
+    ul
+      for folder in param.folders
+        li
+          a(href="images/" + folder)=folder
+    hr
+    p
+      a(href=".") トップ
+      =" | "
+      a(href="filters") フィルター設定
+      =" | "
+      a(href="log") ログ

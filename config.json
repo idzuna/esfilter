@@ -1,0 +1,8 @@
+{
+  "thumbdir": "thumbs",
+  "imagedir": "images",
+  "presetdir": "presets",
+  "unclassifieddir": "@unclassified",
+  "unmatcheddir": "@unmatched",
+  "validextensions":  [".png", ".jpg", ".bmp", ".jpeg"]
+}

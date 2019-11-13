@@ -1,0 +1,114 @@
+﻿doctype html
+html
+  head
+    title フィルター編集 - ESFilter
+    script(src="../scripts/filter.js")
+    style.
+      th {
+        background-color: silver;
+      }
+      table, td, th {
+        border: 1px solid gray;
+      }
+      input[type="number"] {
+        width: 5em;
+      }
+      #filter_image {
+        max-width: 300px;
+        max-height: 300px;
+      }
+      #area_window {
+        display:none;
+        background-color: black;
+        position: absolute;
+        left: 10px;
+        top: 0;
+        width: 800px;
+        height: 500px;
+        border: 1px solid black;
+        overflow: auto;
+      }
+      #area_mask {
+        background-color: white;
+        position: absolute;
+        z-index: 1;
+      }
+      #area_image {
+        opacity: 0.5;
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 2;
+      }
+      .test_match {
+        background-color: #ddffdd;
+        color: green;
+        border-color: green;
+      }
+  body
+    p
+      a(href="..") トップ
+      =" | "
+      a(href="../filters") フィルター設定
+      =" | "
+      a(href="../log") ログ
+    h1 フィルター編集
+    hr
+    form#filter_form(action=param.filter.name + '/edit' method="post")
+      table
+        tbody#filter_settings
+          tr
+            th フィルター名
+            td=param.filter.name
+          tr
+            th 分類先フォルダー名
+            td
+              input(type="text" name="folder" value=param.filter.folder)
+          tr
+            th 比較対象
+            td
+              a(href="javascript:void(0);" onclick="loadImage();") 画像を読み込む
+              br
+              img#filter_image
+              input(type="hidden" name="image" value=param.image)
+          tr#filter_addcondition
+            th(colspan="2")
+              a(href="javascript:void(0);" onclick="addCondition();") 条件を追加する
+          tr
+            th(colspan="2")
+              input(type="button" value="決定" onclick="onFilterSubmit();")
+    script
+      ="window.addEventListener('load',function(){"
+      for condition, index in param.filter.conditions
+        !="addCondition(" + JSON.stringify(condition) + ");"
+      ="});"
+    hr
+    h2 フィルターの動作テスト
+    p
+      select#test_folder
+        for folder in param.folders
+          option(value=folder)=folder
+      =" から画像を "
+      input#test_count(value="10")
+      =" 枚ロード "
+      input#test_load(type="button" value="ロード" onclick="testLoad();")
+      =" "
+      input#test_exec(type="button" value="計算実行" onclick="testExec();" disabled)
+    p#test_message
+    table
+      thead#test_thead
+        tr
+          th 画像
+      tbody#test_tbody
+        
+    div#area_window
+      div
+        div#area_mask
+        img#area_image
+    hr
+    p
+      a(href="..") トップ
+      =" | "
+      a(href="../filters") フィルター設定
+      =" | "
+      a(href="../log") ログ
