@@ -97,7 +97,7 @@ function newfilter() {
 }
 
 window['rename'] = rename;
-function rename() {
+function rename(copy?: boolean) {
     let filter = findCheckedFilter();
     if (filter) {
         let name = window.prompt('フィルター名を入力してください', filter);
@@ -113,7 +113,7 @@ function rename() {
             return;
         }
         document.cookie = 'selected=' + name;
-        post('filters/' + filter + '/rename?newname=' + name);
+        post('filters/' + filter + '/' + (copy ? 'copy' : 'rename') + '?newname=' + name);
     }
 }
 

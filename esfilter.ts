@@ -523,6 +523,47 @@ app.post('/filters/:filter/rename', async function (req, res) {
     return;
 });
 
+app.post('/filters/:filter/copy', async function (req, res) {
+    let index = findFilter(req.params.filter);
+    if (index < 0) {
+        res.status(404);
+        return;
+    }
+    if (!validateFilename(req.query.newname)) {
+        res.redirect('/filters?status=error');
+        return;
+    }
+    let newindex = findFilter(req.query.newname);
+    if (newindex >= 0) {
+        res.redirect('/filters?status=error');
+        return;
+    }
+    await ignoreError(fs.promises.copyFile(
+        path.join(g_config.presetdir, req.params.filter),
+        path.join(g_config.presetdir, req.query.newname)
+    ));
+    let newfilter = <Filter>{};
+    let original = g_settings.filters[index];
+    newfilter.name = req.query.newname;
+    newfilter.folder = original.folder;
+    newfilter.enabled = original.enabled;
+    newfilter.conditions = <Condition[]>[];
+    for (let condition of original.conditions) {
+        newfilter.conditions.push({
+            left: condition.left,
+            top: condition.top,
+            width: condition.width,
+            height: condition.height,
+            operator: condition.operator,
+            threshold: condition.threshold
+        });
+    }
+    g_settings.filters.push(newfilter);
+    saveSettings();
+    res.redirect('/filters');
+    return;
+});
+
 app.post('/filters/:filter/remove', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
