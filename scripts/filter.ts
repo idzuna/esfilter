@@ -213,10 +213,11 @@ function addCondition(condition?: any) {
         a.onclick = function () { selectArea(index); };
         a.innerText = '領域を表示';
         let td = document.createElement('td');
-        td.appendChild(document.createTextNode('左上座標: '));
+        td.appendChild(document.createTextNode('左上座標: ('));
         td.appendChild(createNumberInput('left', condition.left));
-        td.appendChild(document.createTextNode(' x '));
+        td.appendChild(document.createTextNode(' , '));
         td.appendChild(createNumberInput('top', condition.top));
+        td.appendChild(document.createTextNode(')'));
         td.appendChild(document.createElement('br'));
         td.appendChild(document.createTextNode('サイズ: '));
         td.appendChild(createNumberInput('width', condition.width));
