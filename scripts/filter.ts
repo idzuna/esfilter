@@ -98,15 +98,16 @@ function closeAreaWindow() {
 }
 
 window['selectArea'] = selectArea;
-function selectArea(index: number) {
+function selectArea(index: number, openAt: HTMLElement) {
     if (g_selectedCondition === index || index < 0) {
         closeAreaWindow();
         return;
     }
-    let rect = document.getElementsByName('operator')[index].getBoundingClientRect();
+    let rect = openAt.getBoundingClientRect();
     let areaWindow = document.getElementById('area_window');
     areaWindow.style.display = 'block';
-    areaWindow.style.top = (window.pageYOffset + rect.top) + 'px';
+    areaWindow.style.top = (window.pageYOffset + rect.bottom) + 'px';
+    areaWindow.style.left = (window.pageXOffset + rect.left) + 'px';
     g_selectedCondition = index;
     updateCoordinate(index);
 }
@@ -117,7 +118,45 @@ window.addEventListener('load', function () {
 
     let dragStartX = 0;
     let dragStartY = 0;
+    let mouseX = 0;
+    let mouseY = 0;
+    let dragging = false;
     let areaImage = <HTMLImageElement>document.getElementById('area_image');
+    let areaWindow = <HTMLDivElement>document.getElementById('area_window');
+
+    function updateDrag() {
+        if (!dragging) {
+            return;
+        }
+        let windowRect = areaWindow.getBoundingClientRect();
+        let innerLeft = windowRect.left + areaWindow.clientLeft;
+        let innerTop = windowRect.top + areaWindow.clientTop;
+        let innerRight = innerLeft + areaWindow.clientWidth;
+        let innerBottom = innerTop + areaWindow.clientHeight;
+        if (mouseX < innerLeft) {
+            areaWindow.scrollLeft -= Math.ceil((innerLeft - mouseX) / 4);
+        }
+        if (mouseX > innerRight) {
+            areaWindow.scrollLeft += Math.ceil((mouseX - innerRight) / 4);
+        }
+        if (mouseY < innerTop) {
+            areaWindow.scrollTop -= Math.ceil((innerTop - mouseY) / 4);
+        }
+        if (mouseY > innerBottom) {
+            areaWindow.scrollTop += Math.ceil((mouseY - innerBottom) / 4);
+        }
+        let imageRect = areaImage.getBoundingClientRect();
+        let left = Math.min(dragStartX, Math.max(0, mouseX - imageRect.left));
+        let top = Math.min(dragStartY, Math.max(0, mouseY - imageRect.top));
+        let width = Math.max(dragStartX, Math.min(imageRect.width - 1, mouseX - imageRect.left)) - left + 1;
+        let height = Math.max(dragStartY, Math.min(imageRect.height - 1, mouseY - imageRect.top)) - top + 1;
+        getInputElement('left', g_selectedCondition).value = '' + Math.round(left);
+        getInputElement('top', g_selectedCondition).value = '' + Math.round(top);
+        getInputElement('width', g_selectedCondition).value = '' + Math.round(width);
+        getInputElement('height', g_selectedCondition).value = '' + Math.round(height);
+        updateCoordinate(g_selectedCondition);
+        setTimeout(updateDrag, 20);
+    }
     areaImage.src = src;
     areaImage.ondragstart = function () { return false };
     areaImage.onmousedown = function (ev) {
@@ -128,22 +167,20 @@ window.addEventListener('load', function () {
             getInputElement('height', g_selectedCondition).value = '1';
             dragStartX = ev.offsetX;
             dragStartY = ev.offsetY;
-            updateCoordinate(g_selectedCondition);
+            dragging = true;
+            updateDrag();
         }
     };
-    areaImage.onmousemove = function (ev) {
-        if (g_selectedCondition >= 0 && (ev.buttons & 1)) {
-            let left = Math.min(dragStartX, ev.offsetX);
-            let top = Math.min(dragStartY, ev.offsetY);
-            let width = Math.max(dragStartX, ev.offsetX) - left + 1;
-            let height = Math.max(dragStartY, ev.offsetY) - top + 1;
-            getInputElement('left', g_selectedCondition).value = '' + left;
-            getInputElement('top', g_selectedCondition).value = '' + top;
-            getInputElement('width', g_selectedCondition).value = '' + width;
-            getInputElement('height', g_selectedCondition).value = '' + height;
-            updateCoordinate(g_selectedCondition);
-        }
+    document.body.onmouseup = function (ev) {
+        dragging = false;
     };
+    document.body.addEventListener('mousemove', function (ev) {
+        mouseX = ev.clientX;
+        mouseY = ev.clientY;
+        if (dragging && !(ev.buttons & 1)) {
+            dragging = false;
+        }
+    });
 });
 
 /* 条件の追加・削除 */
@@ -210,7 +247,7 @@ function addCondition(condition?: any) {
         th.innerText = '比較領域';
         let a = document.createElement('a');
         a.href = 'javascript:void(0);';
-        a.onclick = function () { selectArea(index); };
+        a.onclick = function () { selectArea(index, a); };
         a.innerText = '領域を表示';
         let td = document.createElement('td');
         td.appendChild(document.createTextNode('左上座標: ('));
