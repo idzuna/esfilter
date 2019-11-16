@@ -589,7 +589,14 @@ app.post('/filters/:filter/copy', async function (req, res) {
             threshold: condition.threshold
         });
     }
-    g_settings.filters.push(newfilter);
+    if (index === g_settings.filters.length - 1) {
+        g_settings.filters.push(newfilter);
+    } else {
+        g_settings.filters = g_settings.filters
+            .slice(0, index + 1)
+            .concat(newfilter)
+            .concat(g_settings.filters.slice(index + 1));
+    }
     saveSettings();
     res.redirect('/filters');
     return;
