@@ -401,7 +401,11 @@ async function testLoad() {
             img.style.maxWidth = '160px';
             img.style.maxHeight = '160px';
             img.className = 'test_image';
-            th.appendChild(img);
+            let a = document.createElement('a');
+            a.href = img.src;
+            a.target = '_blank';
+            a.appendChild(img);
+            th.appendChild(a);
             tr.appendChild(th);
             tbody.appendChild(tr);
             imageCount++;
@@ -418,6 +422,8 @@ async function testLoad() {
     }
     document.getElementById('test_message').innerText = 'ロード完了';
 }
+
+let g_worker;
 
 window['testExec'] = testExec;
 async function testExec() {
@@ -443,7 +449,6 @@ async function testExec() {
         th.className = 'test_data';
         thead.firstChild.appendChild(th);
     }
-    let worker: any;
     let ocrOptions: prefilter.PrefilterOptions = {
         textColor: {
             r: parseInt(getInputElement('ocr_r').value),
@@ -461,10 +466,12 @@ async function testExec() {
 
         document.getElementById('test_message').innerText = '文字認識エンジン初期化中';
 
-        worker = window['Tesseract'].createWorker();
-        await worker.load();
-        await worker.loadLanguage('jpn');
-        await worker.initialize('jpn');
+        if (!g_worker) {
+            g_worker = window['Tesseract'].createWorker();
+            await g_worker.load();
+            await g_worker.loadLanguage('jpn');
+            await g_worker.initialize('jpn');
+        }
     }
     document.getElementById('test_message').innerText = '計算中';
 
@@ -529,8 +536,9 @@ async function testExec() {
                 height: parseInt(getInputElement('ocr_height').value)
             };
             prefilter.prefilter(canvas, data, area, ocrOptions);
-            let result = await worker.recognize(canvas);
-            td.appendChild(document.createTextNode(result.data.text));
+            let result = await g_worker.recognize(canvas);
+            td.appendChild(document.createElement('br'));
+            td.appendChild(document.createTextNode((<string>result.data.text).replace(/ /g, '')));
         }
     }
     
