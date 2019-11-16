@@ -601,7 +601,7 @@ app.post('/filters/:filter/remove', function (req, res) {
         res.status(404);
         return;
     }
-    g_settings.filters.splice(index);
+    g_settings.filters.splice(index, 1);
     fs.unlink(path.join(g_config.presetdir, req.params.filter), function () { });
     saveSettings();
     res.redirect('/filters');
