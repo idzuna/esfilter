@@ -29,12 +29,17 @@ class Filter {
     name: string;
     folder: string;
     enabled: boolean;
+    conditions: Condition[];
     ocrEnabled: boolean;
     ocrLeft: number;
     ocrTop: number;
     ocrWidth: number;
     ocrHeight: number;
-    conditions: Condition[];
+    ocrR: number;
+    ocrG: number;
+    ocrB: number;
+    ocrSpace: string;
+    ocrThreshold: number;
 };
 class Settings {
     autofilterenabled: boolean;
@@ -489,11 +494,6 @@ app.post('/filters/:filter/newfilter', async function (req, res) {
         name: req.params.filter,
         folder: '',
         enabled: false,
-        ocrEnabled: false,
-        ocrLeft: 0,
-        ocrTop: 0,
-        ocrWidth: 1,
-        ocrHeight: 1,
         conditions: [{
             left: 0,
             top: 0,
@@ -501,7 +501,17 @@ app.post('/filters/:filter/newfilter', async function (req, res) {
             height: 1,
             operator: 'rgbmse',
             threshold: 0
-        }]
+        }],
+        ocrEnabled: false,
+        ocrLeft: 0,
+        ocrTop: 0,
+        ocrWidth: 1,
+        ocrHeight: 1,
+        ocrR: 255,
+        ocrG: 255,
+        ocrB: 255,
+        ocrSpace: 'rgb',
+        ocrThreshold: 10
     });
     saveSettings();
     res.redirect('/filters/' + req.params.filter);
@@ -552,17 +562,23 @@ app.post('/filters/:filter/copy', async function (req, res) {
         path.join(g_config.presetdir, req.params.filter),
         path.join(g_config.presetdir, req.query.newname)
     ));
-    let newfilter = <Filter>{};
     let original = g_settings.filters[index];
-    newfilter.name = req.query.newname;
-    newfilter.folder = original.folder;
-    newfilter.enabled = original.enabled;
-    newfilter.ocrEnabled = original.ocrEnabled;
-    newfilter.ocrLeft = original.ocrLeft;
-    newfilter.ocrTop = original.ocrTop;
-    newfilter.ocrWidth = original.ocrWidth;
-    newfilter.ocrHeight= original.ocrHeight;
-    newfilter.conditions = <Condition[]>[];
+    let newfilter: Filter = {
+        name: req.query.newname,
+        folder: original.folder,
+        enabled: original.enabled,
+        conditions: [],
+        ocrEnabled: original.ocrEnabled,
+        ocrLeft: original.ocrLeft,
+        ocrTop: original.ocrTop,
+        ocrWidth: original.ocrWidth,
+        ocrHeight: original.ocrHeight,
+        ocrR: original.ocrR,
+        ocrG: original.ocrG,
+        ocrB: original.ocrB,
+        ocrSpace: original.ocrSpace,
+        ocrThreshold: original.ocrThreshold
+    };
     for (let condition of original.conditions) {
         newfilter.conditions.push({
             left: condition.left,
@@ -601,35 +617,53 @@ app.post('/filters/:filter/edit', function (req, res) {
         res.redirect('/filters?status=error');
         return;
     }
-    let filter = g_settings.filters[index];
-    filter.folder = String(req.body.folder);
-    filter.conditions = [];
-    if (!Array.isArray(req.body.left)) {
-        res.redirect('/filters?status=error');
-        return;
-    }
     let count = req.body.left.length;
-    for (let i = 0; i < count - 1; i++) {
-        filter.conditions.push({
-            left: parseInt(req.body.left[i]),
-            top: parseInt(req.body.top[i]),
-            width: parseInt(req.body.width[i]),
-            height: parseInt(req.body.height[i]),
-            operator: String(req.body.operator[i]),
-            threshold: Number(req.body.threshold[i])
+    let original = g_settings.filters[index];
+    let newfilter: Filter = {
+        name: original.name,
+        folder: req.body.folder,
+        enabled: original.enabled,
+        conditions: [],
+        ocrEnabled: !!req.body.ocr_enabled,
+        ocrLeft: parseInt(req.body.ocr_left),
+        ocrTop: parseInt(req.body.ocr_top),
+        ocrWidth: parseInt(req.body.ocr_width),
+        ocrHeight: parseInt(req.body.ocr_height),
+        ocrR: parseInt(req.body.ocr_r),
+        ocrG: parseInt(req.body.ocr_g),
+        ocrB: parseInt(req.body.ocr_b),
+        ocrSpace: req.body.ocr_space,
+        ocrThreshold: Number(req.body.ocr_threshold)
+    };
+    if (Array.isArray(req.body.left)) {
+        for (let i = 0; i < req.body.left.length; i++) {
+            newfilter.conditions.push({
+                left: parseInt(req.body.left[i]),
+                top: parseInt(req.body.top[i]),
+                width: parseInt(req.body.width[i]),
+                height: parseInt(req.body.height[i]),
+                operator: String(req.body.operator[i]),
+                threshold: Number(req.body.threshold[i])
+            });
+        }
+    }
+    else {
+        newfilter.conditions.push({
+            left: parseInt(req.body.left),
+            top: parseInt(req.body.top),
+            width: parseInt(req.body.width),
+            height: parseInt(req.body.height),
+            operator: String(req.body.operator),
+            threshold: Number(req.body.threshold)
         });
     }
-    filter.ocrEnabled = !!req.body.ocr_enabled;
-    filter.ocrLeft = req.body.left[count - 1];
-    filter.ocrTop = req.body.top[count - 1];
-    filter.ocrWidth = req.body.width[count - 1];
-    filter.ocrHeight = req.body.height[count - 1];
 
     let imageBody = req.body.image.split(',')[1];
     if (!imageBody) {
         res.redirect('/filters?status=error');
         return;
     }
+    g_settings.filters[index] = newfilter;
     let bytes = Buffer.from(imageBody, 'base64');
     fs.promises.writeFile(path.join(g_config.presetdir, req.params.filter), bytes);
     saveSettings();
