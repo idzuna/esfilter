@@ -72,6 +72,31 @@ html
               a(href="javascript:void(0);" onclick="addCondition();") 条件を追加する
           tr
             th(colspan="2")
+              ="文字認識"
+          tr
+            th 文字認識を有効にする
+            td
+              if param.filter.ocrEnabled
+                input(type="checkbox" name="ocr_enabled" checked="checked")
+              else
+                input(type="checkbox" name="ocr_enabled")
+          tr
+            th 文字認識の対象領域
+            td
+              ="左上座標: ("
+              input(type="number" name="left" value=param.filter.ocrLeft)
+              =" , "
+              input(type="number" name="top" value=param.filter.ocrTop)
+              =")"
+              br
+              ="サイズ: "
+              input(type="number" name="width" value=param.filter.ocrWidth)
+              =" x "
+              input(type="number" name="height" value=param.filter.ocrHeight)
+              br
+              a(href="javascript:void(0);" onclick="selectArea(-1, this);") 領域を表示
+          tr
+            th(colspan="2")
               input(type="button" value="決定" onclick="onFilterSubmit();")
     script
       ="window.addEventListener('load',function(){"

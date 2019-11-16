@@ -16,7 +16,7 @@ function getInputElement(name: string, index: number) {
 }
 
 function getConditionCount() {
-    return document.getElementsByName('left').length;
+    return document.getElementsByName('operator').length;
 }
 
 function newElement(tagName: string, params?: {}): HTMLElement {
@@ -99,7 +99,10 @@ function closeAreaWindow() {
 
 window['selectArea'] = selectArea;
 function selectArea(index: number, openAt: HTMLElement) {
-    if (g_selectedCondition === index || index < 0) {
+    if (index < 0) {
+        index = getConditionCount();
+    }
+    if (g_selectedCondition === index) {
         closeAreaWindow();
         return;
     }

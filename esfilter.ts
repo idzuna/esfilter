@@ -29,6 +29,11 @@ class Filter {
     name: string;
     folder: string;
     enabled: boolean;
+    ocrEnabled: boolean;
+    ocrLeft: number;
+    ocrTop: number;
+    ocrWidth: number;
+    ocrHeight: number;
     conditions: Condition[];
 };
 class Settings {
@@ -484,6 +489,11 @@ app.post('/filters/:filter/newfilter', async function (req, res) {
         name: req.params.filter,
         folder: '',
         enabled: false,
+        ocrEnabled: false,
+        ocrLeft: 0,
+        ocrTop: 0,
+        ocrWidth: 1,
+        ocrHeight: 1,
         conditions: [{
             left: 0,
             top: 0,
@@ -547,6 +557,11 @@ app.post('/filters/:filter/copy', async function (req, res) {
     newfilter.name = req.query.newname;
     newfilter.folder = original.folder;
     newfilter.enabled = original.enabled;
+    newfilter.ocrEnabled = original.ocrEnabled;
+    newfilter.ocrLeft = original.ocrLeft;
+    newfilter.ocrTop = original.ocrTop;
+    newfilter.ocrWidth = original.ocrWidth;
+    newfilter.ocrHeight= original.ocrHeight;
     newfilter.conditions = <Condition[]>[];
     for (let condition of original.conditions) {
         newfilter.conditions.push({
@@ -589,28 +604,27 @@ app.post('/filters/:filter/edit', function (req, res) {
     let filter = g_settings.filters[index];
     filter.folder = String(req.body.folder);
     filter.conditions = [];
-    if (Array.isArray(req.body.left)) {
-        for (let i = 0; i < req.body.left.length; i++) {
-            filter.conditions.push({
-                left: parseInt(req.body.left[i]),
-                top: parseInt(req.body.top[i]),
-                width: parseInt(req.body.width[i]),
-                height: parseInt(req.body.height[i]),
-                operator: String(req.body.operator[i]),
-                threshold: Number(req.body.threshold[i])
-            });
-        }
+    if (!Array.isArray(req.body.left)) {
+        res.redirect('/filters?status=error');
+        return;
     }
-    else {
+    let count = req.body.left.length;
+    for (let i = 0; i < count - 1; i++) {
         filter.conditions.push({
-            left: parseInt(req.body.left),
-            top: parseInt(req.body.top),
-            width: parseInt(req.body.width),
-            height: parseInt(req.body.height),
-            operator: String(req.body.operator),
-            threshold: Number(req.body.threshold)
+            left: parseInt(req.body.left[i]),
+            top: parseInt(req.body.top[i]),
+            width: parseInt(req.body.width[i]),
+            height: parseInt(req.body.height[i]),
+            operator: String(req.body.operator[i]),
+            threshold: Number(req.body.threshold[i])
         });
     }
+    filter.ocrEnabled = !!req.body.ocr_enabled;
+    filter.ocrLeft = req.body.left[count - 1];
+    filter.ocrTop = req.body.top[count - 1];
+    filter.ocrWidth = req.body.width[count - 1];
+    filter.ocrHeight = req.body.height[count - 1];
+
     let imageBody = req.body.image.split(',')[1];
     if (!imageBody) {
         res.redirect('/filters?status=error');
