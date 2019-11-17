@@ -1,0 +1,24 @@
+﻿doctype html
+html
+  head
+    meta(name="viewport" content="width=640")
+    title 文字認識結果の編集 - ESFilter
+    script(src="../../../scripts/edittext.js")
+    style.
+      img {
+        display: block;
+        width: 100%;
+      }
+      textarea, input {
+        font-size: 2em;
+        width: 100%;
+      }
+  body(onload="initializetext('" + param.text + "');")
+    p
+      a(href="../../" + param.folder) 戻る
+    h1 文字認識結果の編集
+    hr
+    img(src="../" + param.file)
+    form(action="edittext" method="post")
+      div#edit
+      input(type="submit")

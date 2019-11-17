@@ -1,6 +1,8 @@
 module.exports = {
     mode: 'development',
     entry: {
+        images: './scripts/images.js',
+        edittext: './scripts/edittext.js',
         filter: './scripts/filter.js',
         filters: './scripts/filters.js',
     },

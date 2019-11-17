@@ -817,6 +817,85 @@ app.get('/images/:folder/:file', async function (req, res) {
     }
 });
 
+app.get('/images/:folder/:file/edittext', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+
+    let meta: MetaData = {
+        width: 0,
+        height: 0,
+        filter: '',
+        text: ''
+    };
+    try {
+        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+        meta = JSON.parse(json);
+    } catch (e) {
+    }
+    res.render('edittext', {
+        param: {
+            folder: folder,
+            file: file,
+            text: meta.text
+        }
+    });
+});
+
+app.post('/images/:folder/:file/edittext', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+
+    let meta: MetaData = {
+        width: 0,
+        height: 0,
+        filter: '',
+        text: ''
+    };
+    try {
+        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+        meta = JSON.parse(json);
+    } catch (e) {
+    }
+    meta.text = req.body.text.replace(/[\n\r]/g, '');
+
+    await ignoreError(fs.promises.writeFile(
+        path.join(g_config.imagedir, folder, file + '.json'),
+        JSON.stringify(meta)
+    ));
+    res.redirect('/images/' + folder);
+});
+
+app.post('/images/:folder/:file/revert', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.rename(
+            path.join(g_config.imagedir, folder, file),
+            path.join(g_config.imagedir, g_config.unclassifieddir, file)
+        );
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+    await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
+    res.redirect('/images/' + folder);
+});
+
 app.get('/log', async function (req, res) {
     if (req.query.type && req.query.type === 'json') {
         res.json(g_info);

@@ -1,4 +1,8 @@
-﻿function findCheckedFilter() {
+﻿
+import { post } from './post';
+window['post'] = post;
+
+function findCheckedFilter() {
     let elements = <NodeListOf<HTMLInputElement>>document.getElementsByName('filter');
     for (let elem of elements) {
         if (elem.checked) {
@@ -25,15 +29,6 @@ function validateFilename(filename: string) {
         filename !== '.' &&
         filename !== '..' &&
         !filename.match(/[\\\/:,;\*\?"<>\|]/));
-}
-
-window['post'] = post;
-function post(action: string) {
-    let form = document.createElement('form');
-    form.action = action;
-    form.method = 'post';
-    document.body.appendChild(form);
-    form.submit();
 }
 
 window['run'] = run;
