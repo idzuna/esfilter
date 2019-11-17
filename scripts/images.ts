@@ -2,8 +2,8 @@
 import { post } from './post';
 
 window['sendback'] = sendback;
-function sendback(folder: string, filename: string) {
+function sendback(folder: string, filename: string, options?: any) {
     if (window.confirm(filename + ' を未分類へ戻します。文字認識結果も削除されますがよろしいですか？')) {
-        post(folder + '/' + filename + '/revert');
+        post(folder + '/' + filename + '/revert', options);
     }
 }

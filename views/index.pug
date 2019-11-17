@@ -1,7 +1,7 @@
 ﻿doctype html
 html
   head
-    title ESFilter
+    title フォルダー一覧 - ESFilter
     meta(name="viewport" content="width=400")
     style.
       li {
@@ -9,25 +9,24 @@ html
       }
   body
     p
-      a(href=".") トップ
+      a(href=".") フォルダー一覧
+      =" | "
+      a(href="search") 検索
       =" | "
       a(href="filters") フィルター設定
       =" | "
       a(href="log") ログ
-    h1 ESFilter
+    h1 フォルダー一覧
     hr
-    p
-      if (param.isAutoFilterEnabled)
-        ="フィルター自動実行は有効です"
-      else
-        ="フィルター自動実行は無効です"
     ul
       for folder in param.folders
         li
           a(href="images/" + folder)=folder
     hr
     p
-      a(href=".") トップ
+      a(href=".") フォルダー一覧
+      =" | "
+      a(href="search") 検索
       =" | "
       a(href="filters") フィルター設定
       =" | "

@@ -14,10 +14,17 @@ html
       }
   body(onload="window.scrollTo(0,window.scrollMaxY);")
     p
-      a(href="../../" + param.folder) 戻る
+      if (param.searching)
+        a(href="../../../search?q=" + param.searchq + "&folder=" + param.searchfolder) 戻る
+      else
+        a(href="../../" + param.folder) 戻る
     h1 文字認識結果の編集
     hr
     img(src="../" + param.file)
     form(action="edittext" method="post")
+      if (param.searching)
+        input(type="hidden" name="q" value=param.search_q)
+        input(type="hidden" name="folder" value=param.search_folder)
+        input(type="hidden" name="page" value=param.search_page)
       textarea(name="text" autofocus="autofocus" rows="4")=param.text
       input(type="submit")

@@ -9,7 +9,7 @@ import canvas = require('canvas');
 import tesseract = require('tesseract.js');
 import * as compare from './scripts/compare';
 import * as prefilter from './scripts/prefilter';
-
+import * as textdb from './textdb';
 
 class MetaData {
     width: number;
@@ -51,6 +51,7 @@ class Filter {
 };
 class Settings {
     autofilterenabled: boolean;
+    imagesPerPage: number;
     filters: Filter[];
 };
 
@@ -67,8 +68,12 @@ try {
 catch (e) {
     g_settings = {
         autofilterenabled: false,
+        imagesPerPage: 50,
         filters: []
     };
+}
+if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
+    g_settings.imagesPerPage = 20;
 }
 
 g_config.thumbdir = path.resolve(g_config.thumbdir);
@@ -123,7 +128,7 @@ async function listFiles(p: fs.PathLike, listDirectories?: boolean): Promise<str
         let dir = await fs.promises.readdir(p, { withFileTypes: true });
         for (let entry of dir) {
             if (listDirectories) {
-                if (entry.isDirectory() || entry.isSymbolicLink()) {
+                if (entry.isDirectory()) {
                     files.push(entry.name);
                 }
             }
@@ -272,6 +277,7 @@ async function execFilter(
             path.join(g_config.imagedir, filter.folder, file + '.json'),
             JSON.stringify(meta)
         );
+        await textdb.set(filter.folder, file, ocrText);
         return true;
     } else {
         return false;
@@ -820,6 +826,7 @@ app.get('/images/:folder/:file', async function (req, res) {
 app.get('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    let searching = ('string' === typeof req.query.q);
 
     try {
         await fs.promises.stat(path.join(g_config.imagedir, folder, file));
@@ -843,7 +850,11 @@ app.get('/images/:folder/:file/edittext', async function (req, res) {
         param: {
             folder: folder,
             file: file,
-            text: meta.text
+            text: meta.text,
+            search_q: req.query.q,
+            search_folder: req.query.folder,
+            search_page: req.query.page,
+            searching: searching
         }
     });
 });
@@ -851,6 +862,7 @@ app.get('/images/:folder/:file/edittext', async function (req, res) {
 app.post('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    let searching = ('string' === typeof req.body.q);
 
     try {
         await fs.promises.stat(path.join(g_config.imagedir, folder, file));
@@ -876,7 +888,16 @@ app.post('/images/:folder/:file/edittext', async function (req, res) {
         path.join(g_config.imagedir, folder, file + '.json'),
         JSON.stringify(meta)
     ));
-    res.redirect('/images/' + folder);
+    await textdb.set(folder, file, meta.text);
+
+    if (searching) {
+        let query = 'q=' + req.body.q;
+        query += '&folder=' + req.body.folder;
+        query += '&page=' + req.body.page;
+        res.redirect('/search?' + query);
+    } else {
+        res.redirect('/images/' + folder);
+    }
 });
 
 app.post('/images/:folder/:file/revert', async function (req, res) {
@@ -893,7 +914,79 @@ app.post('/images/:folder/:file/revert', async function (req, res) {
         return;
     }
     await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
-    res.redirect('/images/' + folder);
+    await textdb.remove(folder, file);
+    if ('q' in req.body) {
+        let query = 'q=' + req.body.q;
+        query += '&folder=' + req.body.folder;
+        query += '&page=' + req.body.page;
+        res.redirect('/search?' + query);
+    } else {
+        res.redirect('/images/' + folder);
+    }
+});
+
+app.get('/search', async function (req, res) {
+    let q = ('string' === typeof req.query.q) ? req.query.q : '';
+    let folder = ('string' === typeof req.query.folder) ? req.query.folder : '';
+    let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
+
+    if ('string' !== typeof req.query.q) {
+        let folders = await listDirectories(g_config.imagedir);
+        res.render('search', {
+            param: {
+                files: [],
+                q: '',
+                folder: '',
+                folders: folders,
+                page: 0,
+                pages: 1
+            }
+        });
+        return;
+    }
+    let keywords = q.split(/\s+/);
+    let results = await textdb.search(keywords, folder);
+    let pages = Math.max(1, Math.ceil(results.length / g_settings.imagesPerPage));
+    results.sort(function (a, b) {
+        let aa = a.folder + '/' + a.file;
+        let bb = b.folder + '/' + b.file;
+        return aa < bb ? -1 : aa > bb ? 1 : 0;
+    });
+    results = results.slice(
+        g_settings.imagesPerPage * page,
+        g_settings.imagesPerPage * (page + 1)
+    );
+
+    let files = [];
+    if ('string' === typeof req.query.q) {
+        for (let result of results) {
+            let meta: MetaData = {
+                width: 0,
+                height: 0,
+                filter: '',
+                text: ''
+            };
+            try {
+                let json = await fs.promises.readFile(path.join(g_config.imagedir, result.folder, result.file + '.json'), 'utf-8');
+                meta = JSON.parse(json);
+            } catch (e) {
+            }
+            meta['folder'] = result.folder;
+            meta['name'] = result.file;
+            files.push(meta);
+        }
+    }
+    let folders = await listDirectories(g_config.imagedir);
+    res.render('search', {
+        param: {
+            files: files,
+            q: q,
+            folder: folder,
+            folders: folders,
+            page: page,
+            pages: pages
+        }
+    });
 });
 
 app.get('/log', async function (req, res) {
@@ -913,6 +1006,11 @@ app.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
 app.set('port', process.env.PORT || 3000);
 
 g_ocrWorkerInitialized = initializeOcrWorker();
+
+(async function () {
+    await textdb.initialize(g_config.imagedir, path.join(__dirname, 'textdb.json'));
+    info('検索インデックスの読み込みが完了しました');
+})();
 
 let server = app.listen(app.get('port'), function () {
     console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
