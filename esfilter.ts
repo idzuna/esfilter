@@ -201,6 +201,12 @@ async function loadImageData(filename: string) {
     );
 }
 
+async function getImageDimension(filename: string) {
+    let file = await fs.promises.readFile(filename);
+    let image = await canvas.loadImage(file);
+    return { width: image.naturalWidth, height: image.naturalHeight };
+}
+
 let g_busy = false;
 let g_worker: tesseract.Worker;
 let g_ocrWorkerInitialized: Promise<void>;
@@ -358,6 +364,16 @@ async function runFilters() {
                         path.join(g_config.imagedir, g_config.unmatcheddir, file)
                     );
                     info(file + ' は ' + g_config.unmatcheddir + ' へ移動されました');
+                    let meta: MetaData = {
+                        width: image.width,
+                        height: image.height,
+                        filter: '',
+                        text: ''
+                    };
+                    await fs.promises.writeFile(
+                        path.join(g_config.imagedir, g_config.unmatcheddir, file + '.json'),
+                        JSON.stringify(meta)
+                    );
                 }
             } catch (e) {
                 info(file + ' の処理に失敗しました');
@@ -789,15 +805,14 @@ app.get('/images/:folder/:file', async function (req, res) {
             try {
                 let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
                 res.json(JSON.parse(json));
-            } catch (e) {
-                im.identify(image, function (err, features) {
-                    if (err) {
-                        res.json({ width: 0, height: 0 });
-                    } else {
-                        res.json({ width: features.width, height: features.height });
-                    }
-                });
-            }
+                return;
+            } catch (e) {}
+            try {
+                let dimension = await getImageDimension(image);
+                res.json(dimension);
+                return;
+            } catch (e) { }
+            res.json({ width: 0, height: 0 });
             return;
         }
         if (req.query.type === 'thumb') {
