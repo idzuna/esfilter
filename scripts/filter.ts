@@ -1,5 +1,6 @@
 ﻿
 import * as compare from './compare';
+import * as prefilter from './prefilter';
 
 function removeAllElements(className: string) {
     while (true) {
@@ -11,12 +12,12 @@ function removeAllElements(className: string) {
     }
 }
 
-function getInputElement(name: string, index: number) {
+function getInputElement(name: string, index: number = 0) {
     return <HTMLInputElement>document.getElementsByName(name)[index];
 }
 
 function getConditionCount() {
-    return document.getElementsByName('left').length;
+    return document.getElementsByName('operator').length;
 }
 
 function newElement(tagName: string, params?: {}): HTMLElement {
@@ -61,8 +62,7 @@ async function loadImage() {
 
 window['onFilterSubmit'] = onFilterSubmit;
 function onFilterSubmit() {
-    console.log(getInputElement('folder', 0).value);
-    if (!validateFilename(getInputElement('folder', 0).value)) {
+    if (!validateFilename(getInputElement('folder').value)) {
         window.alert('無効なフォルダー名です');
         return;
     }
@@ -83,12 +83,22 @@ let g_selectedCondition = -1;
 
 window['updateCoordinate'] = updateCoordinate;
 function updateCoordinate(index: number) {
+    if (index < 0) {
+        index = getConditionCount();
+    }
     if (g_selectedCondition === index) {
         let mask = document.getElementById('area_mask');
-        mask.style.left = getInputElement('left', index).value + 'px';
-        mask.style.top = getInputElement('top', index).value + 'px';
-        mask.style.width = getInputElement('width', index).value + 'px';
-        mask.style.height = getInputElement('height', index).value + 'px';
+        if (g_selectedCondition === getConditionCount()) {
+            mask.style.left = getInputElement('ocr_left').value + 'px';
+            mask.style.top = getInputElement('ocr_top').value + 'px';
+            mask.style.width = getInputElement('ocr_width').value + 'px';
+            mask.style.height = getInputElement('ocr_height').value + 'px';
+        } else {
+            mask.style.left = getInputElement('left', index).value + 'px';
+            mask.style.top = getInputElement('top', index).value + 'px';
+            mask.style.width = getInputElement('width', index).value + 'px';
+            mask.style.height = getInputElement('height', index).value + 'px';
+        }
     }
 }
 
@@ -99,7 +109,10 @@ function closeAreaWindow() {
 
 window['selectArea'] = selectArea;
 function selectArea(index: number, openAt: HTMLElement) {
-    if (g_selectedCondition === index || index < 0) {
+    if (index < 0) {
+        index = getConditionCount();
+    }
+    if (g_selectedCondition === index) {
         closeAreaWindow();
         return;
     }
@@ -150,10 +163,17 @@ window.addEventListener('load', function () {
         let top = Math.min(dragStartY, Math.max(0, mouseY - imageRect.top));
         let width = Math.max(dragStartX, Math.min(imageRect.width - 1, mouseX - imageRect.left)) - left + 1;
         let height = Math.max(dragStartY, Math.min(imageRect.height - 1, mouseY - imageRect.top)) - top + 1;
-        getInputElement('left', g_selectedCondition).value = '' + Math.round(left);
-        getInputElement('top', g_selectedCondition).value = '' + Math.round(top);
-        getInputElement('width', g_selectedCondition).value = '' + Math.round(width);
-        getInputElement('height', g_selectedCondition).value = '' + Math.round(height);
+        if (g_selectedCondition === getConditionCount()) {
+            getInputElement('ocr_left').value = '' + Math.round(left);
+            getInputElement('ocr_top').value = '' + Math.round(top);
+            getInputElement('ocr_width').value = '' + Math.round(width);
+            getInputElement('ocr_height').value = '' + Math.round(height);
+        } else {
+            getInputElement('left', g_selectedCondition).value = '' + Math.round(left);
+            getInputElement('top', g_selectedCondition).value = '' + Math.round(top);
+            getInputElement('width', g_selectedCondition).value = '' + Math.round(width);
+            getInputElement('height', g_selectedCondition).value = '' + Math.round(height);
+        }
         updateCoordinate(g_selectedCondition);
         setTimeout(updateDrag, 20);
     }
@@ -161,10 +181,17 @@ window.addEventListener('load', function () {
     areaImage.ondragstart = function () { return false };
     areaImage.onmousedown = function (ev) {
         if (g_selectedCondition >= 0) {
-            getInputElement('left', g_selectedCondition).value = '' + ev.offsetX;
-            getInputElement('top', g_selectedCondition).value = '' + ev.offsetY;
-            getInputElement('width', g_selectedCondition).value = '1';
-            getInputElement('height', g_selectedCondition).value = '1';
+            if (g_selectedCondition === getConditionCount()) {
+                getInputElement('ocr_left').value = '' + ev.offsetX;
+                getInputElement('ocr_top').value = '' + ev.offsetY;
+                getInputElement('ocr_width').value = '1';
+                getInputElement('ocr_height').value = '1';
+            } else {
+                getInputElement('left', g_selectedCondition).value = '' + ev.offsetX;
+                getInputElement('top', g_selectedCondition).value = '' + ev.offsetY;
+                getInputElement('width', g_selectedCondition).value = '1';
+                getInputElement('height', g_selectedCondition).value = '1';
+            }
             dragStartX = ev.offsetX;
             dragStartY = ev.offsetY;
             dragging = true;
@@ -374,7 +401,11 @@ async function testLoad() {
             img.style.maxWidth = '160px';
             img.style.maxHeight = '160px';
             img.className = 'test_image';
-            th.appendChild(img);
+            let a = document.createElement('a');
+            a.href = img.src;
+            a.target = '_blank';
+            a.appendChild(img);
+            th.appendChild(a);
             tr.appendChild(th);
             tbody.appendChild(tr);
             imageCount++;
@@ -392,12 +423,15 @@ async function testLoad() {
     document.getElementById('test_message').innerText = 'ロード完了';
 }
 
+let g_worker;
+
 window['testExec'] = testExec;
 async function testExec() {
     closeAreaWindow();
     (<HTMLInputElement>document.getElementById('test_load')).disabled = true;
     (<HTMLInputElement>document.getElementById('test_exec')).disabled = true;
-    document.getElementById('test_message').innerText = '計算中';
+
+    let ocrEnabled = getInputElement('ocr_enabled').checked;
 
     removeAllElements('test_data');
 
@@ -415,6 +449,32 @@ async function testExec() {
         th.className = 'test_data';
         thead.firstChild.appendChild(th);
     }
+    let ocrOptions: prefilter.PrefilterOptions = {
+        textColor: {
+            r: parseInt(getInputElement('ocr_r').value),
+            g: parseInt(getInputElement('ocr_g').value),
+            b: parseInt(getInputElement('ocr_b').value)
+        },
+        space: <any>(<HTMLSelectElement>document.getElementsByName('ocr_space')[0]).value,
+        distance: Number(getInputElement('ocr_threshold').value)
+    };
+    if (ocrEnabled) {
+        let th = document.createElement('th');
+        th.innerText = 'プレフィルター・文字認識結果';
+        th.className = 'test_data';
+        thead.firstChild.appendChild(th);
+
+        document.getElementById('test_message').innerText = '文字認識エンジン初期化中';
+
+        if (!g_worker) {
+            g_worker = window['Tesseract'].createWorker();
+            await g_worker.load();
+            await g_worker.loadLanguage('jpn');
+            await g_worker.initialize('jpn');
+        }
+    }
+    document.getElementById('test_message').innerText = '計算中';
+
     for (let i = 0; i < images.length; i++) {
         let data = compare.getImageData(<HTMLImageElement>images[i], document.createElement('canvas'));
         for (let c = 0; c < conditionCount; c++) {
@@ -461,6 +521,24 @@ async function testExec() {
             }
             rows[i].appendChild(td);
             await new Promise(function (resolve) { setTimeout(resolve, 1); });
+        }
+        if (ocrEnabled) {
+            let canvas = document.createElement('canvas');
+            let td = document.createElement('td');
+            td.appendChild(canvas);
+            td.className = 'test_data';
+            rows[i].appendChild(td);
+
+            let area = {
+                left: parseInt(getInputElement('ocr_left').value),
+                top: parseInt(getInputElement('ocr_top').value),
+                width: parseInt(getInputElement('ocr_width').value),
+                height: parseInt(getInputElement('ocr_height').value)
+            };
+            prefilter.prefilter(canvas, data, area, ocrOptions);
+            let result = await g_worker.recognize(canvas);
+            td.appendChild(document.createElement('br'));
+            td.appendChild(document.createTextNode((<string>result.data.text).replace(/ /g, '')));
         }
     }
     

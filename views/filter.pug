@@ -2,6 +2,7 @@
 html
   head
     title フィルター編集 - ESFilter
+    script(src="https://unpkg.com/tesseract.js@v2.0.0-beta.1/dist/tesseract.min.js")
     script(src="../scripts/filter.js")
     style.
       th {
@@ -9,6 +10,9 @@ html
       }
       table, td, th {
         border: 1px solid gray;
+      }
+      input[max="255"] {
+        width: 3em !important;
       }
       input[type="number"] {
         width: 5em;
@@ -45,6 +49,9 @@ html
         color: green;
         border-color: green;
       }
+      canvas {
+        border: 1px solid black;
+      }
   body
     p
       a(href="../filters") 戻る
@@ -70,6 +77,54 @@ html
           tr#filter_addcondition
             th(colspan="2")
               a(href="javascript:void(0);" onclick="addCondition();") 条件を追加する
+          tr
+            th(colspan="2")
+              ="文字認識"
+          tr
+            th 有効にする
+            td
+              if param.filter.ocrEnabled
+                input(type="checkbox" name="ocr_enabled" checked="checked")
+              else
+                input(type="checkbox" name="ocr_enabled")
+          tr
+            th 対象領域
+            td
+              ="左上座標: ("
+              input(type="number" name="ocr_left" value=param.filter.ocrLeft oninput="updateCoordinate(-1);")
+              =" , "
+              input(type="number" name="ocr_top" value=param.filter.ocrTop oninput="updateCoordinate(-1);")
+              =")"
+              br
+              ="サイズ: "
+              input(type="number" name="ocr_width" value=param.filter.ocrWidth oninput="updateCoordinate(-1);")
+              =" x "
+              input(type="number" name="ocr_height" value=param.filter.ocrHeight oninput="updateCoordinate(-1);")
+              br
+              a(href="javascript:void(0);" onclick="selectArea(-1, this);") 領域を表示
+          tr
+            th 文字色
+            td
+              ="RGB: ("
+              input(type="number" name="ocr_r" min="0" max="255" value=param.filter.ocrR)
+              =" , "
+              input(type="number" name="ocr_g" min="0" max="255" value=param.filter.ocrG)
+              =" , "
+              input(type="number" name="ocr_b" min="0" max="255" value=param.filter.ocrB)
+              =")"
+          tr
+            th 比較方法
+            td
+              select(name="ocr_space")
+                for value, key in { rgb: 'RGB 色空間', r: 'R のみ', g: 'G のみ', b: 'B のみ', y: '輝度 のみ', lab: 'L*a*b* 色空間' }
+                  if key === param.filter.ocrSpace
+                    option(value=key selected="selected")=value
+                  else
+                    option(value=key)=value
+          tr
+            th しきい値
+            td
+              input(type="number" name="ocr_threshold" min="0" value=param.filter.ocrThreshold)
           tr
             th(colspan="2")
               input(type="button" value="決定" onclick="onFilterSubmit();")

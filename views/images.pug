@@ -1,18 +1,69 @@
 ﻿doctype html
 html
   head
+    meta(name="viewport" content="width=640")
     title=param.folder + " の画像一覧 - ESFilter"
+    script(src="../scripts/images.js")
+    style.
+      li, hr {
+        clear: both;
+      }
+      a.image {
+        display: block;
+        float: left;
+        margin-right: .3em;
+      }
+      .filename {
+        color: green;
+        font-size: .8em;
+      }
+      .dimension {
+        color: gray;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      .filter {
+        color: royalblue;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      ul {
+        padding: 0;
+      }
+      li {
+        list-style: none;
+      }
+      .menuopen {
+        color: blue;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      .menuhidden {
+        display: none;
+      }
+      .menu {
+        line-height: 2em;
+      }
   body
     p
       a(href="..") 戻る
     h1=param.folder + " の画像一覧"
     hr
     ul
-      for file in param.files
+      for file, index in param.files
         li
-          a(href=param.folder + "/" + file)
-            img(src=param.folder + "/" + file + "?type=thumb")
-            span=file
+          a.image(href=param.folder + "/" + file.name target="_blank")
+            img(src=param.folder + "/" + file.name + "?type=thumb")
+          span.filename("ファイル名")=file.name
+          span.dimension(title="画像のサイズ")=file.width + "x" + file.height
+          span.filter(title="マッチしたフィルター")=file.filter
+          a.menuopen(href="javascript:void(0);" onclick="(function(e){e.className=e.className==='menuhidden'?'menu':'menuhidden';})(this.nextElementSibling);") メニュー▼
+          div.menuhidden
+            a(href="javascript:void(0);" onclick="sendback('" + param.folder + "','" + file.name + "');") 未分類へ戻す
+            br
+            a(href=param.folder + "/" + file.name + "/edittext") 文字認識結果を編集する
+          div
+            span.text(title="文字認識の結果")=file.text
     hr
     p
       a(href="..") 戻る

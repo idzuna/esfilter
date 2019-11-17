@@ -6,9 +6,17 @@ import fs = require('fs');
 import im = require('imagemagick');
 import bodyParser = require('body-parser');
 import canvas = require('canvas');
+import tesseract = require('tesseract.js');
 import * as compare from './scripts/compare';
+import * as prefilter from './scripts/prefilter';
 
 
+class MetaData {
+    width: number;
+    height: number;
+    filter: string;
+    text: string;
+};
 class Config {
     thumbdir: string;
     imagedir: string;
@@ -30,6 +38,16 @@ class Filter {
     folder: string;
     enabled: boolean;
     conditions: Condition[];
+    ocrEnabled: boolean;
+    ocrLeft: number;
+    ocrTop: number;
+    ocrWidth: number;
+    ocrHeight: number;
+    ocrR: number;
+    ocrG: number;
+    ocrB: number;
+    ocrSpace: string;
+    ocrThreshold: number;
 };
 class Settings {
     autofilterenabled: boolean;
@@ -57,7 +75,7 @@ g_config.thumbdir = path.resolve(g_config.thumbdir);
 g_config.imagedir = path.resolve(g_config.imagedir);
 g_config.presetdir = path.resolve(g_config.presetdir);
 fs.mkdirSync(g_config.thumbdir, { recursive: true });
-fs.mkdirSync(g_config.imagedir, { recursive: true });
+fs.mkdirSync(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true });
 fs.mkdirSync(g_config.presetdir, { recursive: true });
 
 function formatDate(date: Date) {
@@ -179,6 +197,86 @@ async function loadImageData(filename: string) {
 }
 
 let g_busy = false;
+let g_worker: tesseract.Worker;
+let g_ocrWorkerInitialized: Promise<void>;
+
+async function initializeOcrWorker()
+{
+    g_worker = tesseract.createWorker();
+    await g_worker.load();
+    await g_worker.loadLanguage('jpn');
+    await g_worker.initialize('jpn');
+    info('文字認識エンジンの初期化が完了しました');
+}
+
+async function runOcr(image: ImageData, filter: Filter, resultFile: string) {
+    let c = canvas.createCanvas(filter.ocrWidth, filter.ocrHeight);
+    let area = {
+        top: filter.ocrTop,
+        left: filter.ocrLeft,
+        width: filter.ocrWidth,
+        height: filter.ocrHeight
+    };
+    let options: prefilter.PrefilterOptions = {
+        textColor: { r: filter.ocrR, g: filter.ocrG, b: filter.ocrB },
+        space: <any>filter.ocrSpace,
+        distance: filter.ocrThreshold
+    };
+    prefilter.prefilter(<any>c, image, area, options);
+    let out = fs.createWriteStream('ocrtemp.png');
+    c.createPNGStream().pipe(out);
+    await new Promise(function (resolve) {
+        out.on('finish', resolve);
+    });
+    let result = await g_worker.recognize('ocrtemp.png');
+    return result.data.text.replace(/\s/g, '');
+}
+
+async function execFilter(
+    filter: Filter,
+    filterImage: ImageData,
+    file: string,
+    image: ImageData
+) {
+    if (evaluateCondition(filter.conditions, filterImage, image)) {
+        (async function () {
+            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, filter.folder)));
+            await ignoreError(fs.promises.rename(
+                path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png'),
+                path.join(g_config.thumbdir, filter.folder, file + '.png')
+            ));
+        })();
+        await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, filter.folder)));
+        await fs.promises.rename(
+            path.join(g_config.imagedir, g_config.unclassifieddir, file),
+            path.join(g_config.imagedir, filter.folder, file)
+        );
+        info(file + ' はフィルター "' + filter.name + '" によって振り分けられました');
+        let ocrText = '';
+        if (filter.ocrEnabled) {
+            try {
+                await g_ocrWorkerInitialized;
+                ocrText = await runOcr(image, filter, path.join(g_config.imagedir, filter.folder, file + '.txt'));
+                info(file + ' の文字認識が完了しました');
+            } catch (e) {
+                info(file + ' の文字認識に失敗しました');
+            }
+        }
+        let meta: MetaData = {
+            width: image.width,
+            height: image.height,
+            filter: filter.name,
+            text: ocrText
+        };
+        await fs.promises.writeFile(
+            path.join(g_config.imagedir, filter.folder, file + '.json'),
+            JSON.stringify(meta)
+        );
+        return true;
+    } else {
+        return false;
+    }
+}
 
 async function runSingleFilter(filter: Filter) {
     if (g_busy) {
@@ -193,21 +291,7 @@ async function runSingleFilter(filter: Filter) {
             try {
                 let filename = path.join(g_config.imagedir, g_config.unclassifieddir, file);
                 let image = await loadImageData(filename);
-                if (evaluateCondition(filter.conditions, filterImage, image)) {
-                    (async function () {
-                        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, filter.folder)));
-                        await ignoreError(fs.promises.rename(
-                            path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png'),
-                            path.join(g_config.thumbdir, filter.folder, file + '.png')
-                        ));
-                    })();
-                    await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, filter.folder)));
-                    await fs.promises.rename(
-                        filename,
-                        path.join(g_config.imagedir, filter.folder, file)
-                    );
-                    info(file + ' はフィルター "' + filter.name + '" によって振り分けられました');
-                } else {
+                if (!await execFilter(filter, filterImage, file, image)) {
                     info(file + ' はフィルターされませんでした');
                 }
             } catch (e) {
@@ -249,20 +333,7 @@ async function runFilters() {
                 let image = await loadImageData(filename);
                 let filtered = false;
                 for (let filter of validFilters) {
-                    if (evaluateCondition(filter.filter.conditions, filter.image, image)) {
-                        (async function () {
-                            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, filter.filter.folder)));
-                            await ignoreError(fs.promises.rename(
-                                path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png'),
-                                path.join(g_config.thumbdir, filter.filter.folder, file + '.png')
-                            ));
-                        })();
-                        await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, filter.filter.folder)));
-                        await fs.promises.rename(
-                            filename,
-                            path.join(g_config.imagedir, filter.filter.folder, file)
-                        );
-                        info(file + ' はフィルター "' + filter.filter.name + '" によって振り分けられました');
+                    if (await execFilter(filter.filter, filter.image, file, image)) {
                         filtered = true;
                         break;
                     }
@@ -491,7 +562,17 @@ app.post('/filters/:filter/newfilter', async function (req, res) {
             height: 1,
             operator: 'rgbmse',
             threshold: 0
-        }]
+        }],
+        ocrEnabled: false,
+        ocrLeft: 0,
+        ocrTop: 0,
+        ocrWidth: 1,
+        ocrHeight: 1,
+        ocrR: 255,
+        ocrG: 255,
+        ocrB: 255,
+        ocrSpace: 'rgb',
+        ocrThreshold: 10
     });
     saveSettings();
     res.redirect('/filters/' + req.params.filter);
@@ -542,12 +623,23 @@ app.post('/filters/:filter/copy', async function (req, res) {
         path.join(g_config.presetdir, req.params.filter),
         path.join(g_config.presetdir, req.query.newname)
     ));
-    let newfilter = <Filter>{};
     let original = g_settings.filters[index];
-    newfilter.name = req.query.newname;
-    newfilter.folder = original.folder;
-    newfilter.enabled = original.enabled;
-    newfilter.conditions = <Condition[]>[];
+    let newfilter: Filter = {
+        name: req.query.newname,
+        folder: original.folder,
+        enabled: original.enabled,
+        conditions: [],
+        ocrEnabled: original.ocrEnabled,
+        ocrLeft: original.ocrLeft,
+        ocrTop: original.ocrTop,
+        ocrWidth: original.ocrWidth,
+        ocrHeight: original.ocrHeight,
+        ocrR: original.ocrR,
+        ocrG: original.ocrG,
+        ocrB: original.ocrB,
+        ocrSpace: original.ocrSpace,
+        ocrThreshold: original.ocrThreshold
+    };
     for (let condition of original.conditions) {
         newfilter.conditions.push({
             left: condition.left,
@@ -558,7 +650,14 @@ app.post('/filters/:filter/copy', async function (req, res) {
             threshold: condition.threshold
         });
     }
-    g_settings.filters.push(newfilter);
+    if (index === g_settings.filters.length - 1) {
+        g_settings.filters.push(newfilter);
+    } else {
+        g_settings.filters = g_settings.filters
+            .slice(0, index + 1)
+            .concat(newfilter)
+            .concat(g_settings.filters.slice(index + 1));
+    }
     saveSettings();
     res.redirect('/filters');
     return;
@@ -570,7 +669,7 @@ app.post('/filters/:filter/remove', function (req, res) {
         res.status(404);
         return;
     }
-    g_settings.filters.splice(index);
+    g_settings.filters.splice(index, 1);
     fs.unlink(path.join(g_config.presetdir, req.params.filter), function () { });
     saveSettings();
     res.redirect('/filters');
@@ -586,12 +685,27 @@ app.post('/filters/:filter/edit', function (req, res) {
         res.redirect('/filters?status=error');
         return;
     }
-    let filter = g_settings.filters[index];
-    filter.folder = String(req.body.folder);
-    filter.conditions = [];
+    let count = req.body.left.length;
+    let original = g_settings.filters[index];
+    let newfilter: Filter = {
+        name: original.name,
+        folder: req.body.folder,
+        enabled: original.enabled,
+        conditions: [],
+        ocrEnabled: !!req.body.ocr_enabled,
+        ocrLeft: parseInt(req.body.ocr_left),
+        ocrTop: parseInt(req.body.ocr_top),
+        ocrWidth: parseInt(req.body.ocr_width),
+        ocrHeight: parseInt(req.body.ocr_height),
+        ocrR: parseInt(req.body.ocr_r),
+        ocrG: parseInt(req.body.ocr_g),
+        ocrB: parseInt(req.body.ocr_b),
+        ocrSpace: req.body.ocr_space,
+        ocrThreshold: Number(req.body.ocr_threshold)
+    };
     if (Array.isArray(req.body.left)) {
         for (let i = 0; i < req.body.left.length; i++) {
-            filter.conditions.push({
+            newfilter.conditions.push({
                 left: parseInt(req.body.left[i]),
                 top: parseInt(req.body.top[i]),
                 width: parseInt(req.body.width[i]),
@@ -602,7 +716,7 @@ app.post('/filters/:filter/edit', function (req, res) {
         }
     }
     else {
-        filter.conditions.push({
+        newfilter.conditions.push({
             left: parseInt(req.body.left),
             top: parseInt(req.body.top),
             width: parseInt(req.body.width),
@@ -611,11 +725,13 @@ app.post('/filters/:filter/edit', function (req, res) {
             threshold: Number(req.body.threshold)
         });
     }
+
     let imageBody = req.body.image.split(',')[1];
     if (!imageBody) {
         res.redirect('/filters?status=error');
         return;
     }
+    g_settings.filters[index] = newfilter;
     let bytes = Buffer.from(imageBody, 'base64');
     fs.promises.writeFile(path.join(g_config.presetdir, req.params.filter), bytes);
     saveSettings();
@@ -624,11 +740,27 @@ app.post('/filters/:filter/edit', function (req, res) {
 
 app.get('/images/:folder', async function (req, res) {
     let folder = req.params.folder;
-    let files = await listFiles(path.join(g_config.imagedir, folder));
-    files = files.filter(validateExtension);
+    let filelist = await listFiles(path.join(g_config.imagedir, folder));
+    filelist = filelist.filter(validateExtension);
     if (req.query.type && req.query.type === 'json') {
-        res.json(files);
+        res.json(filelist);
     } else {
+        let files = [];
+        for (let file of filelist) {
+            let meta: MetaData = {
+                width: 0,
+                height: 0,
+                filter: '',
+                text: ''
+            };
+            try {
+                let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+                meta = JSON.parse(json);
+            } catch (e) {
+            }
+            meta['name'] = file;
+            files.push(meta);
+        }
         res.render('images', {
             param: {
                 folder: folder,
@@ -648,13 +780,18 @@ app.get('/images/:folder/:file', async function (req, res) {
     let image = path.join(g_config.imagedir, folder, file);
     if (req.query.type) {
         if (req.query.type === 'json') {
-            im.identify(image, function (err, features) {
-                if (err) {
-                    res.json({ width: 0, height: 0 });
-                } else {
-                    res.json({ width: features.width, height: features.height });
-                }
-            });
+            let meta: MetaData = {
+                width: 0,
+                height: 0,
+                filter: '',
+                text: ''
+            };
+            try {
+                let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+                meta = JSON.parse(json);
+            } catch (e) {
+            }
+            res.json(meta);
             return;
         }
         if (req.query.type === 'thumb') {
@@ -680,6 +817,85 @@ app.get('/images/:folder/:file', async function (req, res) {
     }
 });
 
+app.get('/images/:folder/:file/edittext', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+
+    let meta: MetaData = {
+        width: 0,
+        height: 0,
+        filter: '',
+        text: ''
+    };
+    try {
+        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+        meta = JSON.parse(json);
+    } catch (e) {
+    }
+    res.render('edittext', {
+        param: {
+            folder: folder,
+            file: file,
+            text: meta.text
+        }
+    });
+});
+
+app.post('/images/:folder/:file/edittext', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+
+    let meta: MetaData = {
+        width: 0,
+        height: 0,
+        filter: '',
+        text: ''
+    };
+    try {
+        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+        meta = JSON.parse(json);
+    } catch (e) {
+    }
+    meta.text = req.body.text.replace(/[\n\r]/g, '');
+
+    await ignoreError(fs.promises.writeFile(
+        path.join(g_config.imagedir, folder, file + '.json'),
+        JSON.stringify(meta)
+    ));
+    res.redirect('/images/' + folder);
+});
+
+app.post('/images/:folder/:file/revert', async function (req, res) {
+    let folder = req.params.folder;
+    let file = req.params.file;
+
+    try {
+        await fs.promises.rename(
+            path.join(g_config.imagedir, folder, file),
+            path.join(g_config.imagedir, g_config.unclassifieddir, file)
+        );
+    } catch (e) {
+        res.status(404).end();
+        return;
+    }
+    await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
+    res.redirect('/images/' + folder);
+});
+
 app.get('/log', async function (req, res) {
     if (req.query.type && req.query.type === 'json') {
         res.json(g_info);
@@ -695,6 +911,8 @@ app.get('/log', async function (req, res) {
 app.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
 
 app.set('port', process.env.PORT || 3000);
+
+g_ocrWorkerInitialized = initializeOcrWorker();
 
 let server = app.listen(app.get('port'), function () {
     console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
