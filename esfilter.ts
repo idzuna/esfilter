@@ -786,18 +786,18 @@ app.get('/images/:folder/:file', async function (req, res) {
     let image = path.join(g_config.imagedir, folder, file);
     if (req.query.type) {
         if (req.query.type === 'json') {
-            let meta: MetaData = {
-                width: 0,
-                height: 0,
-                filter: '',
-                text: ''
-            };
             try {
                 let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-                meta = JSON.parse(json);
+                res.json(JSON.parse(json));
             } catch (e) {
+                im.identify(image, function (err, features) {
+                    if (err) {
+                        res.json({ width: 0, height: 0 });
+                    } else {
+                        res.json({ width: features.width, height: features.height });
+                    }
+                });
             }
-            res.json(meta);
             return;
         }
         if (req.query.type === 'thumb') {
