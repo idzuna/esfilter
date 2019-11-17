@@ -75,7 +75,7 @@ g_config.thumbdir = path.resolve(g_config.thumbdir);
 g_config.imagedir = path.resolve(g_config.imagedir);
 g_config.presetdir = path.resolve(g_config.presetdir);
 fs.mkdirSync(g_config.thumbdir, { recursive: true });
-fs.mkdirSync(g_config.imagedir, { recursive: true });
+fs.mkdirSync(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true });
 fs.mkdirSync(g_config.presetdir, { recursive: true });
 
 function formatDate(date: Date) {
