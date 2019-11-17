@@ -3,7 +3,6 @@ html
   head
     meta(name="viewport" content="width=640")
     title 文字認識結果の編集 - ESFilter
-    script(src="../../../scripts/edittext.js")
     style.
       img {
         display: block;
@@ -13,12 +12,12 @@ html
         font-size: 2em;
         width: 100%;
       }
-  body(onload="initializetext('" + param.text + "');")
+  body(onload="window.scrollTo(0,window.scrollMaxY);")
     p
       a(href="../../" + param.folder) 戻る
     h1 文字認識結果の編集
     hr
     img(src="../" + param.file)
     form(action="edittext" method="post")
-      div#edit
+      textarea(name="text" autofocus="autofocus" rows="4")=param.text
       input(type="submit")
