@@ -2,6 +2,28 @@
 html
   head
     title=param.folder + " の画像一覧 - ESFilter"
+    style.
+      li, hr {
+        clear: both;
+      }
+      a.image {
+        display: block;
+        float: left;
+        margin-right: .3em;
+      }
+      .filename {
+        color: green;
+      }
+      .dimension {
+        color: gray;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      .filter {
+        color: royalblue;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
   body
     p
       a(href="..") 戻る
@@ -10,9 +32,13 @@ html
     ul
       for file in param.files
         li
-          a(href=param.folder + "/" + file)
-            img(src=param.folder + "/" + file + "?type=thumb")
-            span=file
+          a.image(href=param.folder + "/" + file.name target="_blank")
+            img(src=param.folder + "/" + file.name + "?type=thumb")
+          span.filename("ファイル名")=file.name
+          span.dimension(title="画像のサイズ")=file.width + "x" + file.height
+          span.filter(title="マッチしたフィルター")=file.filter
+          br
+          span.text(title="文字認識の結果")=file.text
     hr
     p
       a(href="..") 戻る
