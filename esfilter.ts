@@ -3,7 +3,6 @@ import express = require('express');
 import path = require('path');
 import net = require('net');
 import fs = require('fs');
-import im = require('imagemagick');
 import bodyParser = require('body-parser');
 import canvas = require('canvas');
 import tesseract = require('tesseract.js');
@@ -205,6 +204,21 @@ async function getImageDimension(filename: string) {
     let file = await fs.promises.readFile(filename);
     let image = await canvas.loadImage(file);
     return { width: image.naturalWidth, height: image.naturalHeight };
+}
+
+async function resize(input: string, output: string, width: number, height: number) {
+    let data = await fs.promises.readFile(input);
+    let image = await canvas.loadImage(data);
+    let scale = 256 / Math.max(image.naturalWidth, image.naturalHeight);
+    let c = canvas.createCanvas(image.naturalWidth * scale, image.naturalHeight * scale);
+    let ctx = c.getContext('2d');
+    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, c.width, c.height);
+
+    let out = fs.createWriteStream(output);
+    c.createPNGStream().pipe(out);
+    await new Promise(function (resolve) {
+        out.on('finish', resolve);
+    });
 }
 
 let g_busy = false;
@@ -828,7 +842,9 @@ app.get('/images/:folder/:file', async function (req, res) {
             await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder)));
             statthumb = await ignoreError(fs.promises.stat(thumb));
             if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
-                await new Promise(function (resolve) { im.convert([image, '-resize', '256x256', thumb], resolve); });
+                try {
+                    await resize(image, thumb, 256, 256);
+                } catch (e) {}
             }
             res.sendFile(thumb);
             return;
