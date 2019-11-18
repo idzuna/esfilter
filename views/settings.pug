@@ -1,0 +1,32 @@
+﻿doctype html
+html
+  head
+    title 設定 - ESFilter
+  body
+    include _header.pug
+    h1 設定
+    hr
+    ul
+      li
+        form(action="settings/images_per_page" method="post")
+          ="ページあたりに表示する画像数: "
+          select(name="images_per_page")
+            for n in [20, 50, 100, 200]
+              if n === param.imagesPerPage
+                option(value=n selected="selected")=n
+              else
+                option(value=n)=n
+          =" "
+          input(type="submit" value="変更")
+      li
+        form(action="settings/refresh" method="post")
+          ="検索インデックスをリフレッシュする "
+          input(type="submit" value="実行")
+      li
+        form(action="settings/revert_unmatched" method="post")
+          =param.unmatcheddir
+          =" の中のすべての画像を "
+          =param.unclassifieddir
+          =" へ戻す "
+          input(type="submit" value="実行")
+    include _footer.pug

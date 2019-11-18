@@ -1,4 +1,16 @@
-﻿doctype html
+﻿mixin pagelink()
+  div.pagelink
+    =" | "
+    - for (var i = 0; i < param.pages; i++) {
+      if (i === param.page)
+        =i
+        =" | "
+      else
+        a(href=param.folder + "?page=" + i)=i
+        =" | "
+    - }
+
+doctype html
 html
   head
     meta(name="viewport" content="width=640")
@@ -44,11 +56,15 @@ html
       .menu {
         line-height: 2em;
       }
+      .pagelink {
+        clear: both;
+      }
   body
     p
       a(href="..") 戻る
     h1=param.folder + " の画像一覧"
     hr
+    +pagelink()
     ul
       for file, index in param.files
         li
@@ -64,6 +80,7 @@ html
             a(href=param.folder + "/" + file.name + "/edittext") 文字認識結果を編集する
           div
             span.text(title="文字認識の結果")=file.text
+    +pagelink()
     hr
     p
       a(href="..") 戻る

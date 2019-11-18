@@ -781,6 +781,12 @@ app.get('/images/:folder', async function (req, res) {
     if (req.query.type && req.query.type === 'json') {
         res.json(filelist);
     } else {
+        let pages = Math.ceil(filelist.length / g_settings.imagesPerPage);
+        let page = req.query.page ? parseInt(req.query.page) : 0;
+        filelist = filelist.slice(
+            g_settings.imagesPerPage * page,
+            g_settings.imagesPerPage * (page + 1)
+        );
         let files = [];
         for (let file of filelist) {
             let meta: MetaData = {
@@ -800,7 +806,9 @@ app.get('/images/:folder', async function (req, res) {
         res.render('images', {
             param: {
                 folder: folder,
-                files: files
+                files: files,
+                page: page,
+                pages: pages
             }
         });
     }
@@ -1030,6 +1038,55 @@ app.get('/log', async function (req, res) {
             }
         });
     }
+});
+
+app.get('/settings', async function (req, res) {
+    res.render('settings', {
+        param: {
+            imagesPerPage: g_settings.imagesPerPage,
+            unmatcheddir: g_config.unmatcheddir,
+            unclassifieddir: g_config.unclassifieddir
+        }
+    });
+});
+
+app.post('/settings/images_per_page', function (req, res) {
+    if (req.body.images_per_page === '20') {
+        g_settings.imagesPerPage = 20;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '50') {
+        g_settings.imagesPerPage = 50;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '100') {
+        g_settings.imagesPerPage = 100;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '200') {
+        g_settings.imagesPerPage = 200;
+        saveSettings();
+    }
+    res.redirect('/settings');
+});
+
+app.post('/settings/refresh', function (req, res) {
+    textdb.refresh();
+    res.redirect('/settings');
+});
+
+app.post('/settings/revert_unmatched', async function (req, res) {
+    try {
+        let filelist = await listFiles(path.join(g_config.imagedir, g_config.unmatcheddir));
+        filelist = filelist.filter(validateExtension);
+        for (let file of filelist) {
+            let src = path.join(g_config.imagedir, g_config.unmatcheddir, file);
+            let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
+            await ignoreError(fs.promises.rename(src, dest));
+            await ignoreError(fs.promises.unlink(src + '.json'));
+        }
+    } catch (e) { }
+    res.redirect('/settings');
 });
 
 app.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));

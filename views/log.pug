@@ -3,25 +3,10 @@ html
   head
     title ログ - ESFilter
   body
-    p
-      a(href=".") フォルダー一覧
-      =" | "
-      a(href="search") 検索
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _header.pug
     h1 ログ
     hr
     ul
       for line in param.log
         li=line
-    hr
-    p
-      a(href=".") フォルダー一覧
-      =" | "
-      a(href="search") 検索
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _footer.pug

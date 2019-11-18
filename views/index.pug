@@ -8,26 +8,11 @@ html
         line-height: 1.5em;
       }
   body
-    p
-      a(href=".") フォルダー一覧
-      =" | "
-      a(href="search") 検索
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _header.pug
     h1 フォルダー一覧
     hr
     ul
       for folder in param.folders
         li
           a(href="images/" + folder)=folder
-    hr
-    p
-      a(href=".") フォルダー一覧
-      =" | "
-      a(href="search") 検索
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _footer.pug

@@ -1,0 +1,99 @@
+﻿mixin pagelink()
+  div.pagelink
+    =" | "
+    - for (var i = 0; i < param.pages; i++) {
+      if (i === param.page)
+        =i
+        =" | "
+      else
+        a(href="search?q=" + param.q + "&folder=" + param.folder + "&page=" + i)=i
+        =" | "
+    - }
+
+doctype html
+html
+  head
+    meta(name="viewport" content="width=640")
+    title="検索 - ESFilter"
+    script(src="../scripts/images.js")
+    style.
+      li, hr {
+        clear: both;
+      }
+      a.image {
+        display: block;
+        float: left;
+        margin-right: .3em;
+      }
+      .filename {
+        color: green;
+        font-size: .8em;
+      }
+      .dimension {
+        color: gray;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      .filter {
+        color: royalblue;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      ul {
+        padding: 0;
+      }
+      li {
+        list-style: none;
+      }
+      .menuopen {
+        color: blue;
+        font-size: .8em;
+        margin-inline-start: .5em;
+      }
+      .menuhidden {
+        display: none;
+      }
+      .menu {
+        line-height: 2em;
+      }
+      .pagelink {
+        clear: both;
+      }
+  body
+    include _header.pug
+    h1 検索
+    hr
+    form(action="search" method="get")
+      label
+        ="キーワード: "
+        input(type="text" name="q" value=param.q)
+      =" "
+      label
+        ="検索対象: "
+        select(name="folder")
+          option(value="")="|すべてのフォルダー|"
+          for folder in param.folders
+            if (param.folder === folder)
+              option(value=folder selected="selected")=folder
+            else
+              option(value=folder)=folder
+      =" "
+      input(type="submit" value="検索")
+    +pagelink()
+    ul
+      for file in param.files
+        li
+          a.image(href="images/" + file.folder + "/" + file.name target="_blank")
+            img(src="images/" + file.folder + "/" + file.name + "?type=thumb")
+          span.filename("ファイル名")=file.folder + "/" + file.name
+          span.dimension(title="画像のサイズ")=file.width + "x" + file.height
+          span.filter(title="マッチしたフィルター")=file.filter
+          a.menuopen(href="javascript:void(0);" onclick="(function(e){e.className=e.className==='menuhidden'?'menu':'menuhidden';})(this.nextElementSibling);") メニュー▼
+          div.menuhidden
+            a(href="javascript:void(0);" onclick="sendback('images/" + file.folder + "','" + file.name + "',{q:'" + param.q + "',folder:'" + param.folder + "',page:'" + param.page + "'});") 未分類へ戻す
+            br
+            a(href="images/" + file.folder + "/" + file.name + "/edittext?q=" + param.q + "&folder=" + param.folder + "&page=" + param.page) 文字認識結果を編集する
+          div
+            span.text(title="文字認識の結果")=file.text
+    +pagelink()
+    include _footer.pug
