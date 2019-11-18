@@ -17,12 +17,7 @@ html
         background-color: #ffdddd !important;
       }
   body(onload="selectDefault();")
-    p
-      a(href=".") トップ
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _header.pug
     h1 フィルター設定
     hr
     if param.status === "error"
@@ -75,10 +70,4 @@ html
       a(href="javascript:void(0);" onclick="rename(true);") 複製する
       =" | "
       a(href="javascript:void(0);" onclick="remove();") 削除する
-    hr
-    p
-      a(href=".") トップ
-      =" | "
-      a(href="filters") フィルター設定
-      =" | "
-      a(href="log") ログ
+    include _footer.pug

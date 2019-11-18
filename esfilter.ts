@@ -3,13 +3,12 @@ import express = require('express');
 import path = require('path');
 import net = require('net');
 import fs = require('fs');
-import im = require('imagemagick');
 import bodyParser = require('body-parser');
 import canvas = require('canvas');
 import tesseract = require('tesseract.js');
 import * as compare from './scripts/compare';
 import * as prefilter from './scripts/prefilter';
-
+import * as textdb from './textdb';
 
 class MetaData {
     width: number;
@@ -51,6 +50,7 @@ class Filter {
 };
 class Settings {
     autofilterenabled: boolean;
+    imagesPerPage: number;
     filters: Filter[];
 };
 
@@ -67,8 +67,12 @@ try {
 catch (e) {
     g_settings = {
         autofilterenabled: false,
+        imagesPerPage: 50,
         filters: []
     };
+}
+if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
+    g_settings.imagesPerPage = 20;
 }
 
 g_config.thumbdir = path.resolve(g_config.thumbdir);
@@ -123,7 +127,7 @@ async function listFiles(p: fs.PathLike, listDirectories?: boolean): Promise<str
         let dir = await fs.promises.readdir(p, { withFileTypes: true });
         for (let entry of dir) {
             if (listDirectories) {
-                if (entry.isDirectory() || entry.isSymbolicLink()) {
+                if (entry.isDirectory()) {
                     files.push(entry.name);
                 }
             }
@@ -194,6 +198,27 @@ async function loadImageData(filename: string) {
         <HTMLImageElement><any>image,
         <HTMLCanvasElement><any>canvas.createCanvas(1, 1)
     );
+}
+
+async function getImageDimension(filename: string) {
+    let file = await fs.promises.readFile(filename);
+    let image = await canvas.loadImage(file);
+    return { width: image.naturalWidth, height: image.naturalHeight };
+}
+
+async function resize(input: string, output: string, width: number, height: number) {
+    let data = await fs.promises.readFile(input);
+    let image = await canvas.loadImage(data);
+    let scale = 256 / Math.max(image.naturalWidth, image.naturalHeight);
+    let c = canvas.createCanvas(image.naturalWidth * scale, image.naturalHeight * scale);
+    let ctx = c.getContext('2d');
+    ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, c.width, c.height);
+
+    let out = fs.createWriteStream(output);
+    c.createPNGStream().pipe(out);
+    await new Promise(function (resolve) {
+        out.on('finish', resolve);
+    });
 }
 
 let g_busy = false;
@@ -272,6 +297,7 @@ async function execFilter(
             path.join(g_config.imagedir, filter.folder, file + '.json'),
             JSON.stringify(meta)
         );
+        await textdb.set(filter.folder, file, ocrText);
         return true;
     } else {
         return false;
@@ -352,6 +378,16 @@ async function runFilters() {
                         path.join(g_config.imagedir, g_config.unmatcheddir, file)
                     );
                     info(file + ' は ' + g_config.unmatcheddir + ' へ移動されました');
+                    let meta: MetaData = {
+                        width: image.width,
+                        height: image.height,
+                        filter: '',
+                        text: ''
+                    };
+                    await fs.promises.writeFile(
+                        path.join(g_config.imagedir, g_config.unmatcheddir, file + '.json'),
+                        JSON.stringify(meta)
+                    );
                 }
             } catch (e) {
                 info(file + ' の処理に失敗しました');
@@ -745,6 +781,12 @@ app.get('/images/:folder', async function (req, res) {
     if (req.query.type && req.query.type === 'json') {
         res.json(filelist);
     } else {
+        let pages = Math.ceil(filelist.length / g_settings.imagesPerPage);
+        let page = req.query.page ? parseInt(req.query.page) : 0;
+        filelist = filelist.slice(
+            g_settings.imagesPerPage * page,
+            g_settings.imagesPerPage * (page + 1)
+        );
         let files = [];
         for (let file of filelist) {
             let meta: MetaData = {
@@ -764,7 +806,9 @@ app.get('/images/:folder', async function (req, res) {
         res.render('images', {
             param: {
                 folder: folder,
-                files: files
+                files: files,
+                page: page,
+                pages: pages
             }
         });
     }
@@ -780,18 +824,17 @@ app.get('/images/:folder/:file', async function (req, res) {
     let image = path.join(g_config.imagedir, folder, file);
     if (req.query.type) {
         if (req.query.type === 'json') {
-            let meta: MetaData = {
-                width: 0,
-                height: 0,
-                filter: '',
-                text: ''
-            };
             try {
                 let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-                meta = JSON.parse(json);
-            } catch (e) {
-            }
-            res.json(meta);
+                res.json(JSON.parse(json));
+                return;
+            } catch (e) {}
+            try {
+                let dimension = await getImageDimension(image);
+                res.json(dimension);
+                return;
+            } catch (e) { }
+            res.json({ width: 0, height: 0 });
             return;
         }
         if (req.query.type === 'thumb') {
@@ -807,7 +850,9 @@ app.get('/images/:folder/:file', async function (req, res) {
             await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder)));
             statthumb = await ignoreError(fs.promises.stat(thumb));
             if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
-                await new Promise(function (resolve) { im.convert([image, '-resize', '256x256', thumb], resolve); });
+                try {
+                    await resize(image, thumb, 256, 256);
+                } catch (e) {}
             }
             res.sendFile(thumb);
             return;
@@ -820,6 +865,7 @@ app.get('/images/:folder/:file', async function (req, res) {
 app.get('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    let searching = ('string' === typeof req.query.q);
 
     try {
         await fs.promises.stat(path.join(g_config.imagedir, folder, file));
@@ -843,7 +889,11 @@ app.get('/images/:folder/:file/edittext', async function (req, res) {
         param: {
             folder: folder,
             file: file,
-            text: meta.text
+            text: meta.text,
+            search_q: req.query.q,
+            search_folder: req.query.folder,
+            search_page: req.query.page,
+            searching: searching
         }
     });
 });
@@ -851,6 +901,7 @@ app.get('/images/:folder/:file/edittext', async function (req, res) {
 app.post('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    let searching = ('string' === typeof req.body.q);
 
     try {
         await fs.promises.stat(path.join(g_config.imagedir, folder, file));
@@ -876,7 +927,16 @@ app.post('/images/:folder/:file/edittext', async function (req, res) {
         path.join(g_config.imagedir, folder, file + '.json'),
         JSON.stringify(meta)
     ));
-    res.redirect('/images/' + folder);
+    await textdb.set(folder, file, meta.text);
+
+    if (searching) {
+        let query = 'q=' + req.body.q;
+        query += '&folder=' + req.body.folder;
+        query += '&page=' + req.body.page;
+        res.redirect('/search?' + query);
+    } else {
+        res.redirect('/images/' + folder);
+    }
 });
 
 app.post('/images/:folder/:file/revert', async function (req, res) {
@@ -893,7 +953,79 @@ app.post('/images/:folder/:file/revert', async function (req, res) {
         return;
     }
     await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
-    res.redirect('/images/' + folder);
+    await textdb.remove(folder, file);
+    if ('q' in req.body) {
+        let query = 'q=' + req.body.q;
+        query += '&folder=' + req.body.folder;
+        query += '&page=' + req.body.page;
+        res.redirect('/search?' + query);
+    } else {
+        res.redirect('/images/' + folder);
+    }
+});
+
+app.get('/search', async function (req, res) {
+    let q = ('string' === typeof req.query.q) ? req.query.q : '';
+    let folder = ('string' === typeof req.query.folder) ? req.query.folder : '';
+    let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
+
+    if ('string' !== typeof req.query.q) {
+        let folders = await listDirectories(g_config.imagedir);
+        res.render('search', {
+            param: {
+                files: [],
+                q: '',
+                folder: '',
+                folders: folders,
+                page: 0,
+                pages: 1
+            }
+        });
+        return;
+    }
+    let keywords = q.split(/\s+/);
+    let results = await textdb.search(keywords, folder);
+    let pages = Math.max(1, Math.ceil(results.length / g_settings.imagesPerPage));
+    results.sort(function (a, b) {
+        let aa = a.folder + '/' + a.file;
+        let bb = b.folder + '/' + b.file;
+        return aa < bb ? -1 : aa > bb ? 1 : 0;
+    });
+    results = results.slice(
+        g_settings.imagesPerPage * page,
+        g_settings.imagesPerPage * (page + 1)
+    );
+
+    let files = [];
+    if ('string' === typeof req.query.q) {
+        for (let result of results) {
+            let meta: MetaData = {
+                width: 0,
+                height: 0,
+                filter: '',
+                text: ''
+            };
+            try {
+                let json = await fs.promises.readFile(path.join(g_config.imagedir, result.folder, result.file + '.json'), 'utf-8');
+                meta = JSON.parse(json);
+            } catch (e) {
+            }
+            meta['folder'] = result.folder;
+            meta['name'] = result.file;
+            files.push(meta);
+        }
+    }
+    let folders = await listDirectories(g_config.imagedir);
+    res.render('search', {
+        param: {
+            files: files,
+            q: q,
+            folder: folder,
+            folders: folders,
+            page: page,
+            pages: pages
+        }
+    });
 });
 
 app.get('/log', async function (req, res) {
@@ -908,11 +1040,65 @@ app.get('/log', async function (req, res) {
     }
 });
 
+app.get('/settings', async function (req, res) {
+    res.render('settings', {
+        param: {
+            imagesPerPage: g_settings.imagesPerPage,
+            unmatcheddir: g_config.unmatcheddir,
+            unclassifieddir: g_config.unclassifieddir
+        }
+    });
+});
+
+app.post('/settings/images_per_page', function (req, res) {
+    if (req.body.images_per_page === '20') {
+        g_settings.imagesPerPage = 20;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '50') {
+        g_settings.imagesPerPage = 50;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '100') {
+        g_settings.imagesPerPage = 100;
+        saveSettings();
+    }
+    if (req.body.images_per_page === '200') {
+        g_settings.imagesPerPage = 200;
+        saveSettings();
+    }
+    res.redirect('/settings');
+});
+
+app.post('/settings/refresh', function (req, res) {
+    textdb.refresh();
+    res.redirect('/settings');
+});
+
+app.post('/settings/revert_unmatched', async function (req, res) {
+    try {
+        let filelist = await listFiles(path.join(g_config.imagedir, g_config.unmatcheddir));
+        filelist = filelist.filter(validateExtension);
+        for (let file of filelist) {
+            let src = path.join(g_config.imagedir, g_config.unmatcheddir, file);
+            let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
+            await ignoreError(fs.promises.rename(src, dest));
+            await ignoreError(fs.promises.unlink(src + '.json'));
+        }
+    } catch (e) { }
+    res.redirect('/settings');
+});
+
 app.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
 
 app.set('port', process.env.PORT || 3000);
 
 g_ocrWorkerInitialized = initializeOcrWorker();
+
+(async function () {
+    await textdb.initialize(g_config.imagedir, path.join(__dirname, 'textdb.json'));
+    info('検索インデックスの読み込みが完了しました');
+})();
 
 let server = app.listen(app.get('port'), function () {
     console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
