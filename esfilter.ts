@@ -76,6 +76,7 @@ if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
     g_settings.imagesPerPage = 20;
 }
 
+g_config.basepath = g_config.basepath.replace(/^(\/)?/, '/').replace(/\/$/, '');
 g_config.thumbdir = path.resolve(g_config.thumbdir);
 g_config.imagedir = path.resolve(g_config.imagedir);
 g_config.presetdir = path.resolve(g_config.presetdir);
@@ -437,7 +438,7 @@ router.post('/autofilter/enable', function (req, res) {
         g_settings.autofilterenabled = true;
         saveSettings();
     }
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/autofilter/disable', function (req, res) {
@@ -446,12 +447,12 @@ router.post('/autofilter/disable', function (req, res) {
         g_settings.autofilterenabled = false;
         saveSettings();
     }
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/autofilter/once', function (req, res) {
     if (g_settings.autofilterenabled) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     (async function () {
@@ -462,7 +463,7 @@ router.post('/autofilter/once', function (req, res) {
             info('他のジョブが実行中のためフィルターの単発実行を中止しました');
         }
     })();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.get('/filters', function (req, res) {
@@ -521,7 +522,7 @@ router.post('/filters/:filter/run', function (req, res) {
             info('他のジョブが実行中のためフィルター "' + req.params.filter + '" の単独実行を中止しました');
         }
     })();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/enable', function (req, res) {
@@ -532,7 +533,7 @@ router.post('/filters/:filter/enable', function (req, res) {
     }
     g_settings.filters[index].enabled = true;
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/disable', function (req, res) {
@@ -543,7 +544,7 @@ router.post('/filters/:filter/disable', function (req, res) {
     }
     g_settings.filters[index].enabled = false;
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/up', function (req, res) {
@@ -558,7 +559,7 @@ router.post('/filters/:filter/up', function (req, res) {
         g_settings.filters[index - 1] = tmp;
         saveSettings();
     }
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/down', function (req, res) {
@@ -573,17 +574,17 @@ router.post('/filters/:filter/down', function (req, res) {
         g_settings.filters[index + 1] = tmp;
         saveSettings();
     }
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/newfilter', async function (req, res) {
     let index = findFilter(req.params.filter);
     if (index >= 0) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     if (!validateFilename(req.params.filter)) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     g_settings.filters.push({
@@ -610,7 +611,7 @@ router.post('/filters/:filter/newfilter', async function (req, res) {
         ocrThreshold: 10
     });
     saveSettings();
-    res.redirect('/filters/' + req.params.filter);
+    res.redirect(g_config.basepath + '/filters/' + req.params.filter);
     return;
 });
 
@@ -621,12 +622,12 @@ router.post('/filters/:filter/rename', async function (req, res) {
         return;
     }
     if (!validateFilename(req.query.newname)) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     let newindex = findFilter(req.query.newname);
     if (newindex >= 0) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     await ignoreError(fs.promises.rename(
@@ -635,7 +636,7 @@ router.post('/filters/:filter/rename', async function (req, res) {
     ));
     g_settings.filters[index].name = req.query.newname;
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
     return;
 });
 
@@ -646,12 +647,12 @@ router.post('/filters/:filter/copy', async function (req, res) {
         return;
     }
     if (!validateFilename(req.query.newname)) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     let newindex = findFilter(req.query.newname);
     if (newindex >= 0) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     await ignoreError(fs.promises.copyFile(
@@ -694,7 +695,7 @@ router.post('/filters/:filter/copy', async function (req, res) {
             .concat(g_settings.filters.slice(index + 1));
     }
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
     return;
 });
 
@@ -707,7 +708,7 @@ router.post('/filters/:filter/remove', function (req, res) {
     g_settings.filters.splice(index, 1);
     fs.unlink(path.join(g_config.presetdir, req.params.filter), function () { });
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/edit', function (req, res) {
@@ -717,7 +718,7 @@ router.post('/filters/:filter/edit', function (req, res) {
         return;
     }
     if (!validateFilename(req.body.folder)) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     let count = req.body.left.length;
@@ -763,14 +764,14 @@ router.post('/filters/:filter/edit', function (req, res) {
 
     let imageBody = req.body.image.split(',')[1];
     if (!imageBody) {
-        res.redirect('/filters?status=error');
+        res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     g_settings.filters[index] = newfilter;
     let bytes = Buffer.from(imageBody, 'base64');
     fs.promises.writeFile(path.join(g_config.presetdir, req.params.filter), bytes);
     saveSettings();
-    res.redirect('/filters');
+    res.redirect(g_config.basepath + '/filters');
 });
 
 router.get('/images/:folder', async function (req, res) {
@@ -932,9 +933,9 @@ router.post('/images/:folder/:file/edittext', async function (req, res) {
         let query = 'q=' + req.body.q;
         query += '&folder=' + req.body.folder;
         query += '&page=' + req.body.page;
-        res.redirect('/search?' + query);
+        res.redirect(g_config.basepath + '/search?' + query);
     } else {
-        res.redirect('/images/' + folder);
+        res.redirect(g_config.basepath + '/images/' + folder);
     }
 });
 
@@ -957,9 +958,9 @@ router.post('/images/:folder/:file/revert', async function (req, res) {
         let query = 'q=' + req.body.q;
         query += '&folder=' + req.body.folder;
         query += '&page=' + req.body.page;
-        res.redirect('/search?' + query);
+        res.redirect(g_config.basepath + '/search?' + query);
     } else {
-        res.redirect('/images/' + folder);
+        res.redirect(g_config.basepath + '/images/' + folder);
     }
 });
 
@@ -1066,12 +1067,12 @@ router.post('/settings/images_per_page', function (req, res) {
         g_settings.imagesPerPage = 200;
         saveSettings();
     }
-    res.redirect('/settings');
+    res.redirect(g_config.basepath + '/settings');
 });
 
 router.post('/settings/refresh', function (req, res) {
     textdb.refresh();
-    res.redirect('/settings');
+    res.redirect(g_config.basepath + '/settings');
 });
 
 router.post('/settings/revert_unmatched', async function (req, res) {
@@ -1085,7 +1086,7 @@ router.post('/settings/revert_unmatched', async function (req, res) {
             await ignoreError(fs.promises.unlink(src + '.json'));
         }
     } catch (e) { }
-    res.redirect('/settings');
+    res.redirect(g_config.basepath + '/settings');
 });
 
 router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
