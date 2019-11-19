@@ -1,8 +1,9 @@
 {
+  "basepath":  "/",
   "thumbdir": "thumbs",
   "imagedir": "images",
   "presetdir": "presets",
   "unclassifieddir": "@unclassified",
   "unmatcheddir": "@unmatched",
-  "validextensions":  [".png", ".jpg", ".bmp", ".jpeg"]
+  "validextensions": [ ".png", ".jpg", ".bmp", ".jpeg" ]
 }

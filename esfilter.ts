@@ -17,6 +17,7 @@ class MetaData {
     text: string;
 };
 class Config {
+    basepath: string;
     thumbdir: string;
     imagedir: string;
     presetdir: string;
@@ -415,13 +416,11 @@ async function beginWorker() {
     }
 }
 
-let app = express();
+let router = express.Router();
 
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'pug');
-app.use(bodyParser.urlencoded({ extended: true, limit: 100*1024*1024 }));
+router.use(bodyParser.urlencoded({ extended: true, limit: 100*1024*1024 }));
 
-app.get('/', async function (req, res) {
+router.get('/', async function (req, res) {
     let folders = await listDirectories(g_config.imagedir);
     res.render('index', {
         param: {
@@ -432,7 +431,7 @@ app.get('/', async function (req, res) {
     });
 });
 
-app.post('/autofilter/enable', function (req, res) {
+router.post('/autofilter/enable', function (req, res) {
     if (!g_settings.autofilterenabled) {
         info('フィルターの自動実行を開始します');
         g_settings.autofilterenabled = true;
@@ -441,7 +440,7 @@ app.post('/autofilter/enable', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/autofilter/disable', function (req, res) {
+router.post('/autofilter/disable', function (req, res) {
     if (g_settings.autofilterenabled) {
         info('フィルターの自動実行を停止します');
         g_settings.autofilterenabled = false;
@@ -450,7 +449,7 @@ app.post('/autofilter/disable', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/autofilter/once', function (req, res) {
+router.post('/autofilter/once', function (req, res) {
     if (g_settings.autofilterenabled) {
         res.redirect('/filters?status=error');
         return;
@@ -466,7 +465,7 @@ app.post('/autofilter/once', function (req, res) {
     res.redirect('/filters');
 });
 
-app.get('/filters', function (req, res) {
+router.get('/filters', function (req, res) {
     res.render('filters', {
         param: {
             filters: g_settings.filters,
@@ -477,7 +476,7 @@ app.get('/filters', function (req, res) {
     });
 });
 
-app.get('/filters/:filter', async function (req, res) {
+router.get('/filters/:filter', async function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -508,7 +507,7 @@ app.get('/filters/:filter', async function (req, res) {
     });
 });
 
-app.post('/filters/:filter/run', function (req, res) {
+router.post('/filters/:filter/run', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -525,7 +524,7 @@ app.post('/filters/:filter/run', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/enable', function (req, res) {
+router.post('/filters/:filter/enable', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -536,7 +535,7 @@ app.post('/filters/:filter/enable', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/disable', function (req, res) {
+router.post('/filters/:filter/disable', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -547,7 +546,7 @@ app.post('/filters/:filter/disable', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/up', function (req, res) {
+router.post('/filters/:filter/up', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -562,7 +561,7 @@ app.post('/filters/:filter/up', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/down', function (req, res) {
+router.post('/filters/:filter/down', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -577,7 +576,7 @@ app.post('/filters/:filter/down', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/newfilter', async function (req, res) {
+router.post('/filters/:filter/newfilter', async function (req, res) {
     let index = findFilter(req.params.filter);
     if (index >= 0) {
         res.redirect('/filters?status=error');
@@ -615,7 +614,7 @@ app.post('/filters/:filter/newfilter', async function (req, res) {
     return;
 });
 
-app.post('/filters/:filter/rename', async function (req, res) {
+router.post('/filters/:filter/rename', async function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -640,7 +639,7 @@ app.post('/filters/:filter/rename', async function (req, res) {
     return;
 });
 
-app.post('/filters/:filter/copy', async function (req, res) {
+router.post('/filters/:filter/copy', async function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -699,7 +698,7 @@ app.post('/filters/:filter/copy', async function (req, res) {
     return;
 });
 
-app.post('/filters/:filter/remove', function (req, res) {
+router.post('/filters/:filter/remove', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -711,7 +710,7 @@ app.post('/filters/:filter/remove', function (req, res) {
     res.redirect('/filters');
 });
 
-app.post('/filters/:filter/edit', function (req, res) {
+router.post('/filters/:filter/edit', function (req, res) {
     let index = findFilter(req.params.filter);
     if (index < 0) {
         res.status(404);
@@ -774,7 +773,7 @@ app.post('/filters/:filter/edit', function (req, res) {
     res.redirect('/filters');
 });
 
-app.get('/images/:folder', async function (req, res) {
+router.get('/images/:folder', async function (req, res) {
     let folder = req.params.folder;
     let filelist = await listFiles(path.join(g_config.imagedir, folder));
     filelist = filelist.filter(validateExtension);
@@ -814,7 +813,7 @@ app.get('/images/:folder', async function (req, res) {
     }
 });
 
-app.get('/images/:folder/:file', async function (req, res) {
+router.get('/images/:folder/:file', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
     if (!validateExtension(file)) {
@@ -862,7 +861,7 @@ app.get('/images/:folder/:file', async function (req, res) {
     }
 });
 
-app.get('/images/:folder/:file/edittext', async function (req, res) {
+router.get('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
     let searching = ('string' === typeof req.query.q);
@@ -898,7 +897,7 @@ app.get('/images/:folder/:file/edittext', async function (req, res) {
     });
 });
 
-app.post('/images/:folder/:file/edittext', async function (req, res) {
+router.post('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
     let searching = ('string' === typeof req.body.q);
@@ -939,7 +938,7 @@ app.post('/images/:folder/:file/edittext', async function (req, res) {
     }
 });
 
-app.post('/images/:folder/:file/revert', async function (req, res) {
+router.post('/images/:folder/:file/revert', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
 
@@ -964,7 +963,7 @@ app.post('/images/:folder/:file/revert', async function (req, res) {
     }
 });
 
-app.get('/search', async function (req, res) {
+router.get('/search', async function (req, res) {
     let q = ('string' === typeof req.query.q) ? req.query.q : '';
     let folder = ('string' === typeof req.query.folder) ? req.query.folder : '';
     let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
@@ -1028,7 +1027,7 @@ app.get('/search', async function (req, res) {
     });
 });
 
-app.get('/log', async function (req, res) {
+router.get('/log', async function (req, res) {
     if (req.query.type && req.query.type === 'json') {
         res.json(g_info);
     } else {
@@ -1040,7 +1039,7 @@ app.get('/log', async function (req, res) {
     }
 });
 
-app.get('/settings', async function (req, res) {
+router.get('/settings', async function (req, res) {
     res.render('settings', {
         param: {
             imagesPerPage: g_settings.imagesPerPage,
@@ -1050,7 +1049,7 @@ app.get('/settings', async function (req, res) {
     });
 });
 
-app.post('/settings/images_per_page', function (req, res) {
+router.post('/settings/images_per_page', function (req, res) {
     if (req.body.images_per_page === '20') {
         g_settings.imagesPerPage = 20;
         saveSettings();
@@ -1070,12 +1069,12 @@ app.post('/settings/images_per_page', function (req, res) {
     res.redirect('/settings');
 });
 
-app.post('/settings/refresh', function (req, res) {
+router.post('/settings/refresh', function (req, res) {
     textdb.refresh();
     res.redirect('/settings');
 });
 
-app.post('/settings/revert_unmatched', async function (req, res) {
+router.post('/settings/revert_unmatched', async function (req, res) {
     try {
         let filelist = await listFiles(path.join(g_config.imagedir, g_config.unmatcheddir));
         filelist = filelist.filter(validateExtension);
@@ -1089,9 +1088,7 @@ app.post('/settings/revert_unmatched', async function (req, res) {
     res.redirect('/settings');
 });
 
-app.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
-
-app.set('port', process.env.PORT || 3000);
+router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
 
 g_ocrWorkerInitialized = initializeOcrWorker();
 
@@ -1100,9 +1097,16 @@ g_ocrWorkerInitialized = initializeOcrWorker();
     info('検索インデックスの読み込みが完了しました');
 })();
 
+beginWorker();
+
+let app = express();
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'pug');
+app.set('port', process.env.PORT || 3000);
+app.use(g_config.basepath, router);
+
 let server = app.listen(app.get('port'), function () {
     console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
     info('ESFilter を起動しました - フィルターの自動実行が' + (g_settings.autofilterenabled ? '有' : '無') + '効です');
 });
 
-beginWorker();
