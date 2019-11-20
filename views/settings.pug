@@ -2,22 +2,44 @@
 html
   head
     title 設定 - ESFilter
+    style.
+      th {
+        background-color: silver;
+      }
+      table, td, th {
+        border: 1px solid gray;
+      }
+      td {
+        width: 10em;
+      }
   body
     include _header.pug
     h1 設定
     hr
-    ul
-      li
-        form(action="settings/images_per_page" method="post")
-          ="ページあたりに表示する画像数: "
-          select(name="images_per_page")
-            for n in [20, 50, 100, 200]
-              if n === param.imagesPerPage
-                option(value=n selected="selected")=n
+    form(action="settings" method="post")
+      table
+        tbody
+          tr
+            th ページあたりに表示する画像数
+            td
+              select(name="images_per_page")
+                for n in [20, 50, 100, 200]
+                  if n === param.imagesPerPage
+                    option(value=n selected="selected")=n
+                  else
+                    option(value=n)=n
+          tr
+            th 検索時に似た文字を同一として扱う
+            td
+              if param.enableFuzzySearch
+                input(type="checkbox" name="enable_fuzzy_search" checked="checked")
               else
-                option(value=n)=n
-          =" "
-          input(type="submit" value="変更")
+                input(type="checkbox" name="enable_fuzzy_search")
+          tr
+            th(colspan="2")
+              input(type="submit")
+    hr
+    ul
       li
         form(action="settings/refresh" method="post")
           ="検索インデックスをリフレッシュする "

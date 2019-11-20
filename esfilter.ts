@@ -24,6 +24,7 @@ class Config {
     unclassifieddir: string;
     unmatcheddir: string;
     validextensions: string[];
+    conversiontable: { [key: string]: string };
 };
 class Condition {
     left: number;
@@ -52,6 +53,7 @@ class Filter {
 class Settings {
     autofilterenabled: boolean;
     imagesPerPage: number;
+    enableFuzzySearch: boolean;
     filters: Filter[];
 };
 
@@ -69,6 +71,7 @@ catch (e) {
     g_settings = {
         autofilterenabled: false,
         imagesPerPage: 50,
+        enableFuzzySearch: true,
         filters: []
     };
 }
@@ -984,7 +987,7 @@ router.get('/search', async function (req, res) {
         return;
     }
     let keywords = q.split(/\s+/);
-    let results = await textdb.search(keywords, folder);
+    let results = await textdb.search(keywords, folder, g_settings.enableFuzzySearch);
     let pages = Math.max(1, Math.ceil(results.length / g_settings.imagesPerPage));
     results.sort(function (a, b) {
         let aa = a.folder + '/' + a.file;
@@ -1044,29 +1047,29 @@ router.get('/settings', async function (req, res) {
     res.render('settings', {
         param: {
             imagesPerPage: g_settings.imagesPerPage,
+            enableFuzzySearch: g_settings.enableFuzzySearch,
             unmatcheddir: g_config.unmatcheddir,
             unclassifieddir: g_config.unclassifieddir
         }
     });
 });
 
-router.post('/settings/images_per_page', function (req, res) {
+router.post('/settings', function (req, res) {
+    g_settings.enableFuzzySearch = req.body.enable_fuzzy_search;
+
     if (req.body.images_per_page === '20') {
         g_settings.imagesPerPage = 20;
-        saveSettings();
     }
     if (req.body.images_per_page === '50') {
         g_settings.imagesPerPage = 50;
-        saveSettings();
     }
     if (req.body.images_per_page === '100') {
         g_settings.imagesPerPage = 100;
-        saveSettings();
     }
     if (req.body.images_per_page === '200') {
         g_settings.imagesPerPage = 200;
-        saveSettings();
     }
+    saveSettings();
     res.redirect(g_config.basepath + '/settings');
 });
 
@@ -1099,7 +1102,11 @@ g_ocrWorkerInitialized = initializeOcrWorker();
 
 (async function () {
     info('検索インデックスの作成を開始します');
-    await textdb.initialize(g_config.imagedir, path.join(__dirname, 'textdb.json'));
+    await textdb.initialize(
+        g_config.imagedir,
+        path.join(__dirname, 'textdb.json'),
+        g_config.conversiontable
+    );
     info('検索インデックスの作成が完了しました');
 })();
 

@@ -5,6 +5,7 @@ import sem = require('await-semaphore');
 
 let g_directory: string;
 let g_databaseFile: string;
+let g_conversionTable: { [key: string]: string };
 
 let g_db: { [key: string]: string } = {};
 let g_mutex = new sem.Mutex();
@@ -54,11 +55,12 @@ async function scanInternal() {
     } catch (e) {}
 }
 
-export async function initialize(directory: string, databaseFile: string) {
+export async function initialize(directory: string, databaseFile: string, conversionTable: { [key: string]: string }) {
     let release = await g_mutex.acquire();
     try {
         g_directory = directory;
         g_databaseFile = databaseFile;
+        g_conversionTable = conversionTable;
         await loadInternal();
         await scanInternal();
         await saveInternal();
@@ -121,13 +123,23 @@ export async function remove(folder: string, file: string) {
     }
 }
 
-export async function search(keywords: string[], folder?: string) {
+export async function search(keywords: string[], folder?: string, enableConversion?: boolean) {
     let release = await g_mutex.acquire();
     let keys: { folder: string, file: string }[] = [];
     try {
+        let convert = function (text: string) { return text; };
+        if (enableConversion) {
+            convert = function (text: string) {
+                for (let key in g_conversionTable) {
+                    text = text.split(key).join(g_conversionTable[key]);
+                }
+                return text;
+            }
+        }
         function test(text: string, keywords: string[]) {
+            text = convert(text);
             for (let keyword of keywords) {
-                if (!text.match(keyword)) {
+                if (!text.match(convert(keyword))) {
                     return false;
                 }
             }
