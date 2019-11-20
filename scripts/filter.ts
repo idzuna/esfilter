@@ -2,6 +2,8 @@
 import * as compare from './compare';
 import * as prefilter from './prefilter';
 
+let g_imageData: ImageData;
+
 function removeAllElements(className: string) {
     while (true) {
         let elem = document.getElementsByClassName(className)[0]
@@ -39,6 +41,19 @@ function validateFilename(filename: string) {
         !filename.match(/[\\\/:,;\*\?"<>\|]/));
 }
 
+function updateImages() {
+    let src = (<HTMLInputElement>document.getElementsByName('image')[0]).value;
+    (<HTMLImageElement>document.getElementById('filter_image')).src = src;
+    (<HTMLImageElement>document.getElementById('area_image')).src = src;
+    (<HTMLImageElement>document.getElementById('colorpicker_image')).src = src;
+    document.getElementById('filter_image').onload = function () {
+        g_imageData = compare.getImageData(
+            <HTMLImageElement>this,
+            document.createElement('canvas')
+        );
+    }
+}
+
 window['loadImage'] = loadImage;
 async function loadImage() {
     let file = <File>await new Promise(function (resolve) {
@@ -55,9 +70,8 @@ async function loadImage() {
         reader.readAsDataURL(file);
         reader.onload = function () { resolve(<string>reader.result); };
     });
-    (<HTMLImageElement>document.getElementById('filter_image')).src = data;
-    (<HTMLImageElement>document.getElementById('area_image')).src = data;
     (<HTMLInputElement>document.getElementsByName('image')[0]).value = data;
+    updateImages();
 }
 
 window['onFilterSubmit'] = onFilterSubmit;
@@ -126,9 +140,7 @@ function selectArea(index: number, openAt: HTMLElement) {
 }
 
 window.addEventListener('load', function () {
-    let src = (<HTMLInputElement>document.getElementsByName('image')[0]).value;
-    (<HTMLImageElement>document.getElementById('filter_image')).src = src;
-
+    updateImages();
     let dragStartX = 0;
     let dragStartY = 0;
     let mouseX = 0;
@@ -177,7 +189,6 @@ window.addEventListener('load', function () {
         updateCoordinate(g_selectedCondition);
         setTimeout(updateDrag, 20);
     }
-    areaImage.src = src;
     areaImage.ondragstart = function () { return false };
     areaImage.onmousedown = function (ev) {
         if (g_selectedCondition >= 0) {
@@ -208,6 +219,54 @@ window.addEventListener('load', function () {
             dragging = false;
         }
     });
+});
+
+/* 文字色選択 */
+
+window['updateColor'] = updateColor;
+function updateColor() {
+    function toHex8(value: any) {
+        let str = '0' + parseInt(value).toString(16);
+        return str.substr(str.length - 2);
+    }
+    let color = '#';
+    color += toHex8(getInputElement('ocr_r').value);
+    color += toHex8(getInputElement('ocr_g').value);
+    color += toHex8(getInputElement('ocr_b').value);
+    document.getElementById('colorsample').style.backgroundColor = color;
+}
+
+let g_colorpickerShowing = false;
+
+window['getColor'] = getColor;
+function getColor(openAt: HTMLElement) {
+    let colorpickerWindow = document.getElementById('colorpicker_window');
+    if (g_colorpickerShowing) {
+        colorpickerWindow.style.display = 'none';
+        g_colorpickerShowing = false;
+        return;
+    }
+    let rect = openAt.getBoundingClientRect();
+    colorpickerWindow.style.display = 'block';
+    colorpickerWindow.style.top = (window.pageYOffset + rect.bottom) + 'px';
+    colorpickerWindow.style.left = (window.pageXOffset + rect.left) + 'px';
+    g_colorpickerShowing = true;
+}
+
+window.addEventListener('load', function () {
+    updateColor();
+    let colorpickerImage = document.getElementById('colorpicker_image');
+    colorpickerImage.onmousemove = function (ev) {
+        if (ev.buttons & 1) {
+            let index = (Math.round(ev.offsetX) + g_imageData.width * Math.round(ev.offsetY)) * 4;
+            getInputElement('ocr_r').value = String(g_imageData.data[index]);
+            getInputElement('ocr_g').value = String(g_imageData.data[index + 1]);
+            getInputElement('ocr_b').value = String(g_imageData.data[index + 2]);
+            updateColor();
+        }
+    };
+    colorpickerImage.onmousedown = colorpickerImage.onmousemove;
+    colorpickerImage.ondragstart = function () { return false };
 });
 
 /* 条件の追加・削除 */
@@ -435,10 +494,7 @@ async function testExec() {
 
     removeAllElements('test_data');
 
-    let model = compare.getImageData(
-        <HTMLImageElement>document.getElementById('filter_image'),
-        document.createElement('canvas')
-    );
+    let model = g_imageData;
     let images = document.getElementsByClassName('test_image');
     let rows = document.getElementsByClassName('test_row');
     let conditionCount = getConditionCount();
