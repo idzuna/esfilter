@@ -1071,7 +1071,11 @@ router.post('/settings/images_per_page', function (req, res) {
 });
 
 router.post('/settings/refresh', function (req, res) {
-    textdb.refresh();
+    (async function () {
+        info('検索インデックスの作成を開始します');
+        textdb.refresh();
+        info('検索インデックスの作成が完了しました');
+    })();
     res.redirect(g_config.basepath + '/settings');
 });
 
@@ -1094,8 +1098,9 @@ router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts'))
 g_ocrWorkerInitialized = initializeOcrWorker();
 
 (async function () {
+    info('検索インデックスの作成を開始します');
     await textdb.initialize(g_config.imagedir, path.join(__dirname, 'textdb.json'));
-    info('検索インデックスの読み込みが完了しました');
+    info('検索インデックスの作成が完了しました');
 })();
 
 beginWorker();
