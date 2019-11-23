@@ -16,6 +16,7 @@ html
     include _header.pug
     h1 設定
     hr
+    h2 動作設定
     form(action="settings" method="post")
       table
         tbody
@@ -39,16 +40,23 @@ html
             th(colspan="2")
               input(type="submit")
     hr
-    ul
-      li
-        form(action="settings/refresh" method="post")
-          ="検索インデックスをリフレッシュする "
-          input(type="submit" value="実行")
-      li
-        form(action="settings/revert_unmatched" method="post")
-          =param.unmatcheddir
-          =" の中のすべての画像を "
-          =param.unclassifieddir
-          =" へ戻す "
-          input(type="submit" value="実行")
+    h2 検索インデックスのリフレッシュ
+    form(action="settings/refresh" method="post")
+      p
+        ="検索インデックスをリフレッシュする "
+        input(type="submit" value="実行")
+    hr
+    h2 フィルターの再実行
+    form(action="settings/revert" method="post")
+      p
+        select(name="folder" id="foldername")
+          for folder in param.folders
+            if (param.unmatcheddir === folder)
+              option(value=folder selected="selected")=folder
+            else if (param.unclassifieddir !== folder)
+              option(value=folder)=folder
+        =" の中のすべての画像を "
+        =param.unclassifieddir
+        =" へ戻す "
+        input(type="submit" value="実行" onclick="return window.confirm(document.getElementById('foldername').value + ' のすべての画像の認識結果はリセットされます。よろしいですか？');")
     include _footer.pug

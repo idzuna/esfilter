@@ -1044,12 +1044,14 @@ router.get('/log', async function (req, res) {
 });
 
 router.get('/settings', async function (req, res) {
+    let folders = await listDirectories(g_config.imagedir);
     res.render('settings', {
         param: {
             imagesPerPage: g_settings.imagesPerPage,
             enableFuzzySearch: g_settings.enableFuzzySearch,
             unmatcheddir: g_config.unmatcheddir,
-            unclassifieddir: g_config.unclassifieddir
+            unclassifieddir: g_config.unclassifieddir,
+            folders: folders
         }
     });
 });
@@ -1082,15 +1084,26 @@ router.post('/settings/refresh', function (req, res) {
     res.redirect(g_config.basepath + '/settings');
 });
 
-router.post('/settings/revert_unmatched', async function (req, res) {
+router.post('/settings/revert', async function (req, res) {
     try {
-        let filelist = await listFiles(path.join(g_config.imagedir, g_config.unmatcheddir));
-        filelist = filelist.filter(validateExtension);
-        for (let file of filelist) {
-            let src = path.join(g_config.imagedir, g_config.unmatcheddir, file);
-            let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
-            await ignoreError(fs.promises.rename(src, dest));
-            await ignoreError(fs.promises.unlink(src + '.json'));
+        let folder = req.body.folder;
+        if (validateFilename(folder) && folder !== g_config.unclassifieddir) {
+            let filelist = await listFiles(path.join(g_config.imagedir, req.body.folder));
+            filelist = filelist.filter(validateExtension);
+            for (let file of filelist) {
+                (async function () {
+                    await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir)));
+                    await ignoreError(fs.promises.rename(
+                        path.join(g_config.thumbdir, folder, file + '.png'),
+                        path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
+                    ));
+                })();
+                let src = path.join(g_config.imagedir, req.body.folder, file);
+                let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
+                await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir)));
+                await ignoreError(fs.promises.unlink(src + '.json'));
+                await ignoreError(fs.promises.rename(src, dest));
+            }
         }
     } catch (e) { }
     res.redirect(g_config.basepath + '/settings');
