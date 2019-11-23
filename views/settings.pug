@@ -2,31 +2,61 @@
 html
   head
     title 設定 - ESFilter
+    style.
+      th {
+        background-color: silver;
+      }
+      table, td, th {
+        border: 1px solid gray;
+      }
+      td {
+        width: 10em;
+      }
   body
     include _header.pug
     h1 設定
     hr
-    ul
-      li
-        form(action="settings/images_per_page" method="post")
-          ="ページあたりに表示する画像数: "
-          select(name="images_per_page")
-            for n in [20, 50, 100, 200]
-              if n === param.imagesPerPage
-                option(value=n selected="selected")=n
+    h2 動作設定
+    form(action="settings" method="post")
+      table
+        tbody
+          tr
+            th ページあたりに表示する画像数
+            td
+              select(name="images_per_page")
+                for n in [20, 50, 100, 200]
+                  if n === param.imagesPerPage
+                    option(value=n selected="selected")=n
+                  else
+                    option(value=n)=n
+          tr
+            th 検索時に似た文字を同一として扱う
+            td
+              if param.enableFuzzySearch
+                input(type="checkbox" name="enable_fuzzy_search" checked="checked")
               else
-                option(value=n)=n
-          =" "
-          input(type="submit" value="変更")
-      li
-        form(action="settings/refresh" method="post")
-          ="検索インデックスをリフレッシュする "
-          input(type="submit" value="実行")
-      li
-        form(action="settings/revert_unmatched" method="post")
-          =param.unmatcheddir
-          =" の中のすべての画像を "
-          =param.unclassifieddir
-          =" へ戻す "
-          input(type="submit" value="実行")
+                input(type="checkbox" name="enable_fuzzy_search")
+          tr
+            th(colspan="2")
+              input(type="submit")
+    hr
+    h2 検索インデックスのリフレッシュ
+    form(action="settings/refresh" method="post")
+      p
+        ="検索インデックスをリフレッシュする "
+        input(type="submit" value="実行")
+    hr
+    h2 フィルターの再実行
+    form(action="settings/revert" method="post")
+      p
+        select(name="folder" id="foldername")
+          for folder in param.folders
+            if (param.unmatcheddir === folder)
+              option(value=folder selected="selected")=folder
+            else if (param.unclassifieddir !== folder)
+              option(value=folder)=folder
+        =" の中のすべての画像を "
+        =param.unclassifieddir
+        =" へ戻す "
+        input(type="submit" value="実行" onclick="return window.confirm(document.getElementById('foldername').value + ' のすべての画像の認識結果はリセットされます。よろしいですか？');")
     include _footer.pug

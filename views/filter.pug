@@ -21,7 +21,12 @@ html
         max-width: 300px;
         max-height: 300px;
       }
-      #area_window {
+      #colorsample {
+        border: 1px solid black;
+        width: 50px;
+        height: 50px;
+      }
+      #area_window, #colorpicker_window {
         display:none;
         background-color: black;
         position: absolute;
@@ -43,6 +48,11 @@ html
         left: 0;
         top: 0;
         z-index: 2;
+      }
+      #colorpicker_image {
+        position: absolute;
+        left: 0;
+        top: 0;
       }
       .test_match {
         background-color: #ddffdd;
@@ -106,12 +116,14 @@ html
             th 文字色
             td
               ="RGB: ("
-              input(type="number" name="ocr_r" min="0" max="255" value=param.filter.ocrR)
+              input(type="number" name="ocr_r" min="0" max="255" value=param.filter.ocrR oninput="updateColor();")
               =" , "
-              input(type="number" name="ocr_g" min="0" max="255" value=param.filter.ocrG)
+              input(type="number" name="ocr_g" min="0" max="255" value=param.filter.ocrG oninput="updateColor();")
               =" , "
-              input(type="number" name="ocr_b" min="0" max="255" value=param.filter.ocrB)
+              input(type="number" name="ocr_b" min="0" max="255" value=param.filter.ocrB oninput="updateColor();")
               =")"
+              div#colorsample
+              a(href="javascript:void(0);" onclick="getColor(this);") 色を取得
           tr
             th 比較方法
             td
@@ -156,6 +168,9 @@ html
       div
         div#area_mask
         img#area_image
+    div#colorpicker_window
+      div
+        img#colorpicker_image
     hr
     p
       a(href="../filters") 戻る
