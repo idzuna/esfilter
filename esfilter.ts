@@ -220,10 +220,12 @@ async function resize(input: string, output: string, width: number, height: numb
     ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, c.width, c.height);
 
     let out = fs.createWriteStream(output);
-    c.createPNGStream().pipe(out);
-    await new Promise(function (resolve) {
+    let promise = new Promise(function (resolve, reject) {
         out.on('finish', resolve);
+        out.on('error', reject);
     });
+    c.createPNGStream().pipe(out);
+    await promise;
 }
 
 let g_busy = false;
@@ -254,10 +256,12 @@ async function runOcr(image: ImageData, filter: Filter, resultFile: string) {
     };
     prefilter.prefilter(<any>c, image, area, options);
     let out = fs.createWriteStream('ocrtemp.png');
-    c.createPNGStream().pipe(out);
-    await new Promise(function (resolve) {
+    let promise = new Promise(function (resolve, reject) {
         out.on('finish', resolve);
+        out.on('error', reject);
     });
+    c.createPNGStream().pipe(out);
+    await promise;
     let result = await g_worker.recognize('ocrtemp.png');
     return result.data.text.replace(/\s/g, '');
 }
@@ -270,13 +274,13 @@ async function execFilter(
 ) {
     if (evaluateCondition(filter.conditions, filterImage, image)) {
         (async function () {
-            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, filter.folder)));
+            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, filter.folder), { recursive: true }));
             await ignoreError(fs.promises.rename(
                 path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png'),
                 path.join(g_config.thumbdir, filter.folder, file + '.png')
             ));
         })();
-        await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, filter.folder)));
+        await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, filter.folder), { recursive: true }));
         await fs.promises.rename(
             path.join(g_config.imagedir, g_config.unclassifieddir, file),
             path.join(g_config.imagedir, filter.folder, file)
@@ -371,13 +375,13 @@ async function runFilters() {
                 }
                 if (!filtered) {
                     (async function () {
-                        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unmatcheddir)));
+                        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unmatcheddir), { recursive: true }));
                         await ignoreError(fs.promises.rename(
                             path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png'),
                             path.join(g_config.thumbdir, g_config.unmatcheddir, file + '.png')
                         ));
                     })();
-                    await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unmatcheddir)));
+                    await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unmatcheddir), { recursive: true }));
                     await fs.promises.rename(
                         filename,
                         path.join(g_config.imagedir, g_config.unmatcheddir, file)
@@ -850,7 +854,7 @@ router.get('/images/:folder/:file', async function (req, res) {
                 res.status(404).end();
                 return;
             }
-            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder)));
+            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder), { recursive: true }));
             statthumb = await ignoreError(fs.promises.stat(thumb));
             if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
                 try {
@@ -1092,7 +1096,7 @@ router.post('/settings/revert', async function (req, res) {
             filelist = filelist.filter(validateExtension);
             for (let file of filelist) {
                 (async function () {
-                    await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir)));
+                    await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir), { recursive: true }));
                     await ignoreError(fs.promises.rename(
                         path.join(g_config.thumbdir, folder, file + '.png'),
                         path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
@@ -1100,7 +1104,7 @@ router.post('/settings/revert', async function (req, res) {
                 })();
                 let src = path.join(g_config.imagedir, req.body.folder, file);
                 let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
-                await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir)));
+                await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true }));
                 await ignoreError(fs.promises.unlink(src + '.json'));
                 await ignoreError(fs.promises.rename(src, dest));
             }
