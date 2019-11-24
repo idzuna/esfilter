@@ -17,7 +17,7 @@ html
         width: 10em;
       }
   body
-    +header("")
+    +header(".")
     h1 メンテナンス
     hr
     h2 動作設定
@@ -63,4 +63,4 @@ html
         =param.unclassifieddir
         =" へ戻す "
         input(type="submit" value="実行" onclick="return window.confirm(document.getElementById('foldername').value + ' のすべての画像の認識結果を削除して未分類へ戻します。よろしいですか？');")
-    +footer("")
+    +footer(".")
