@@ -13,17 +13,16 @@
 doctype html
 html
   head
-    meta(name="viewport" content="width=640")
+    meta(name="viewport" content="width=device-width,initial-scale=1")
     title="検索 - ESFilter"
     script(src="../scripts/images.js")
     style.
-      li, hr {
-        clear: both;
+      td {
+        vertical-align: top;
       }
-      a.image {
+      img {
         display: block;
-        float: left;
-        margin-right: .3em;
+        margin: .3em .1em .3em 0;
       }
       .filename {
         color: green;
@@ -32,23 +31,15 @@ html
       .dimension {
         color: gray;
         font-size: .8em;
-        margin-inline-start: .5em;
       }
       .filter {
         color: royalblue;
         font-size: .8em;
-        margin-inline-start: .5em;
-      }
-      ul {
-        padding: 0;
-      }
-      li {
-        list-style: none;
       }
       .menuopen {
         color: blue;
         font-size: .8em;
-        margin-inline-start: .5em;
+        white-space: nowrap;
       }
       .menuhidden {
         display: none;
@@ -57,7 +48,23 @@ html
         line-height: 2em;
       }
       .pagelink {
-        clear: both;
+        margin: .3em;
+      }
+      @media only screen and (max-width: 512px) {
+        img {
+            max-width: 192px;
+        }
+        .pagelink {
+          text-align: center;
+        }
+      }
+      @media only screen and (max-width: 384px) {
+        img {
+            max-width: 128px;
+        }
+      }
+      label {
+        display: inline-block;
       }
   body
     include _header.pug
@@ -80,20 +87,26 @@ html
       =" "
       input(type="submit" value="検索")
     +pagelink()
-    ul
-      for file in param.files
-        li
-          a.image(href="images/" + file.folder + "/" + file.name target="_blank")
-            img(src="images/" + file.folder + "/" + file.name + "?type=thumb")
-          span.filename("ファイル名")=file.folder + "/" + file.name
-          span.dimension(title="画像のサイズ")=file.width + "x" + file.height
-          span.filter(title="マッチしたフィルター")=file.filter
-          a.menuopen(href="javascript:void(0);" onclick="(function(e){e.className=e.className==='menuhidden'?'menu':'menuhidden';})(this.nextElementSibling);") メニュー▼
-          div.menuhidden
-            a(href="javascript:void(0);" onclick="sendback('images/" + file.folder + "','" + file.name + "',{q:'" + param.q + "',folder:'" + param.folder + "',page:'" + param.page + "'});") 未分類へ戻す
-            br
-            a(href="images/" + file.folder + "/" + file.name + "/edittext?q=" + param.q + "&folder=" + param.folder + "&page=" + param.page) 文字認識結果を編集する
-          div
-            span.text(title="文字認識の結果")=file.text
+    table
+      tbody
+        for file in param.files
+          tr
+            td
+              a.image(href="images/" + file.folder + "/" + file.name target="_blank")
+                img(src="images/" + file.folder + "/" + file.name + "?type=thumb")
+            td
+              span.filename("ファイル名")=file.folder + "/" + file.name
+              =" "
+              span.dimension(title="画像のサイズ")=file.width + "x" + file.height
+              =" "
+              span.filter(title="マッチしたフィルター")=file.filter
+              =" "
+              a.menuopen(href="javascript:void(0);" onclick="(function(e){e.className=e.className==='menuhidden'?'menu':'menuhidden';})(this.nextElementSibling);") メニュー▼
+              div.menuhidden
+                a(href="javascript:void(0);" onclick="sendback('images/" + file.folder + "','" + file.name + "',{q:'" + param.q + "',folder:'" + param.folder + "',page:'" + param.page + "'});") 未分類へ戻す
+                br
+                a(href="images/" + file.folder + "/" + file.name + "/edittext?q=" + param.q + "&folder=" + param.folder + "&page=" + param.page) 文字認識結果を編集する
+              div
+                span.text(title="文字認識の結果")=file.text
     +pagelink()
     include _footer.pug
