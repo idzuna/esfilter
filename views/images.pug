@@ -1,4 +1,6 @@
-﻿mixin pagelink()
+﻿include _common.pug
+
+mixin pagelink()
   div.pagelink
     =" | "
     - for (var i = 0; i < param.pages; i++) {
@@ -15,7 +17,7 @@ html
   head
     meta(name="viewport" content="width=device-width,initial-scale=1")
     title=param.folder + " の画像一覧 - ESFilter"
-    script(src="../scripts/images.js")
+    +style()
     style.
       td {
         vertical-align: top;
@@ -47,9 +49,15 @@ html
       .menu {
         line-height: 2em;
       }
+      .pagelink {
+        margin: .3em;
+      }
       @media only screen and (max-width: 512px) {
         img {
             max-width: 192px;
+        }
+        .pagelink {
+          text-align: center;
         }
       }
       @media only screen and (max-width: 384px) {
@@ -57,11 +65,13 @@ html
             max-width: 128px;
         }
       }
+    script(src="../scripts/images.js")
   body
-    p
-      a(href="..") 戻る
+    +header("..")
     h1=param.folder + " の画像一覧"
     hr
+    div.back
+      a(href="..") 戻る
     +pagelink()
     table
       tbody
@@ -85,6 +95,6 @@ html
               div
                 span.text(title="文字認識の結果")=file.text
     +pagelink()
-    hr
-    p
+    div.back
       a(href="..") 戻る
+    +footer("..")

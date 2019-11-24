@@ -1,4 +1,6 @@
-﻿mixin pagelink()
+﻿include _common.pug
+
+mixin pagelink()
   div.pagelink
     =" | "
     - for (var i = 0; i < param.pages; i++) {
@@ -15,7 +17,7 @@ html
   head
     meta(name="viewport" content="width=device-width,initial-scale=1")
     title="検索 - ESFilter"
-    script(src="../scripts/images.js")
+    +style()
     style.
       td {
         vertical-align: top;
@@ -66,8 +68,9 @@ html
       label {
         display: inline-block;
       }
+    script(src="../scripts/images.js")
   body
-    include _header.pug
+    +header("")
     h1 検索
     hr
     form(action="search" method="get")
@@ -109,4 +112,4 @@ html
               div
                 span.text(title="文字認識の結果")=file.text
     +pagelink()
-    include _footer.pug
+    +footer("")
