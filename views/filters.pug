@@ -22,7 +22,7 @@ html
       }
     script(src="scripts/filters.js")
   body(onload="selectDefault();")
-    +header("")
+    +header(".")
     h1 フィルター設定
     hr
     if param.status === "error"
@@ -75,4 +75,4 @@ html
       a(href="javascript:void(0);" onclick="rename(true);") 複製する
       =" | "
       a(href="javascript:void(0);" onclick="remove();") 削除する
-    +footer("")
+    +footer(".")
