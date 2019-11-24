@@ -1,0 +1,40 @@
+﻿mixin style()
+  style.
+    h1 {
+      font-size: 1.7em;
+    }
+    h2 {
+      font-size: 1.2em;
+    }
+    a {
+      display: inline-block;
+      color: #4064d0 !important;
+    }
+    .back {
+      margin: .3em 0;
+    }
+
+mixin header(base)
+  nav
+    a(href=base + "/") フォルダー一覧
+    =" | "
+    a(href=base + "/search") 検索
+    =" | "
+    a(href=base + "/filters") フィルター設定
+    =" | "
+    a(href=base + "/log") ログ
+    =" | "
+    a(href=base + "/settings") メンテナンス
+
+mixin footer(base)
+  hr
+  nav
+    a(href=base + "/") フォルダー一覧
+    =" | "
+    a(href=base + "/search") 検索
+    =" | "
+    a(href=base + "/filters") フィルター設定
+    =" | "
+    a(href=base + "/log") ログ
+    =" | "
+    a(href=base + "/settings") メンテナンス

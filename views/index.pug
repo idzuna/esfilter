@@ -1,18 +1,21 @@
-﻿doctype html
+﻿include _common.pug
+
+doctype html
 html
   head
+    meta(name="viewport" content="width=device-width,initial-scale=1")
     title フォルダー一覧 - ESFilter
-    meta(name="viewport" content="width=400")
+    +style()
     style.
       li {
         line-height: 1.5em;
       }
   body
-    include _header.pug
+    +header("")
     h1 フォルダー一覧
     hr
     ul
       for folder in param.folders
         li
           a(href="images/" + folder)=folder
-    include _footer.pug
+    +footer("")

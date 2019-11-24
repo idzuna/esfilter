@@ -1,20 +1,24 @@
-﻿doctype html
+﻿include _common.pug
+
+doctype html
 html
   head
-    title 設定 - ESFilter
+    meta(name="viewport" content="width=device-width,initial-scale=1")
+    title メンテナンス - ESFilter
+    +style()
     style.
       th {
-        background-color: silver;
+        background-color: #bbc8ee;
       }
       table, td, th {
-        border: 1px solid gray;
+        border: 1px solid #abe;
       }
       td {
         width: 10em;
       }
   body
-    include _header.pug
-    h1 設定
+    +header("")
+    h1 メンテナンス
     hr
     h2 動作設定
     form(action="settings" method="post")
@@ -58,5 +62,5 @@ html
         =" の中のすべての画像を "
         =param.unclassifieddir
         =" へ戻す "
-        input(type="submit" value="実行" onclick="return window.confirm(document.getElementById('foldername').value + ' のすべての画像の認識結果はリセットされます。よろしいですか？');")
-    include _footer.pug
+        input(type="submit" value="実行" onclick="return window.confirm(document.getElementById('foldername').value + ' のすべての画像の認識結果を削除して未分類へ戻します。よろしいですか？');")
+    +footer("")

@@ -1,23 +1,28 @@
-﻿doctype html
+﻿include _common.pug
+
+doctype html
 html
   head
+    meta(name="viewport" content="width=device-width,initial-scale=1")
     title フィルター設定 - ESFilter
-    script(src="scripts/filters.js")
+    +style()
     style.
       th {
-        background-color: silver;
+        background-color: #bbc8ee;
       }
       table, td, th {
-        border: 1px solid gray;
+        border: 1px solid #abe;
       }
       tbody tr:hover {
-        background-color: #eeeeee;
+        background-color: #eef;
       }
-      .selected {
-        background-color: #ffdddd !important;
+      .selected td {
+        background-color: #fee !important;
+        border-color: #ebb;
       }
+    script(src="scripts/filters.js")
   body(onload="selectDefault();")
-    include _header.pug
+    +header("")
     h1 フィルター設定
     hr
     if param.status === "error"
@@ -70,4 +75,4 @@ html
       a(href="javascript:void(0);" onclick="rename(true);") 複製する
       =" | "
       a(href="javascript:void(0);" onclick="remove();") 削除する
-    include _footer.pug
+    +footer("")

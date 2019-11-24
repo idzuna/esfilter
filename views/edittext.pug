@@ -1,8 +1,11 @@
-﻿doctype html
+﻿include _common.pug
+
+doctype html
 html
   head
-    meta(name="viewport" content="width=640")
+    meta(name="viewport" content="width=device-width,initial-scale=1")
     title 文字認識結果の編集 - ESFilter
+    +style()
     style.
       img {
         display: block;

@@ -1,15 +1,17 @@
-﻿doctype html
+﻿include _common.pug
+
+doctype html
 html
   head
+    meta(name="viewport" content="width=device-width,initial-scale=1")
     title フィルター編集 - ESFilter
-    script(src="https://unpkg.com/tesseract.js@v2.0.0-beta.1/dist/tesseract.min.js")
-    script(src="../scripts/filter.js")
+    +style()
     style.
       th {
-        background-color: silver;
+        background-color: #bbc8ee;
       }
       table, td, th {
-        border: 1px solid gray;
+        border: 1px solid #abe;
       }
       input[max="255"] {
         width: 3em !important;
@@ -62,11 +64,14 @@ html
       canvas {
         border: 1px solid black;
       }
+    script(src="https://unpkg.com/tesseract.js@v2.0.0-beta.1/dist/tesseract.min.js")
+    script(src="../scripts/filter.js")
   body
-    p
-      a(href="../filters") 戻る
+    +header("..")
     h1 フィルター編集
     hr
+    div.back
+      a(href="../filters") 戻る
     form#filter_form(action=param.filter.name + '/edit' method="post")
       table
         tbody#filter_settings
@@ -171,6 +176,6 @@ html
     div#colorpicker_window
       div
         img#colorpicker_image
-    hr
-    p
+    div.back
       a(href="../filters") 戻る
+    +footer("..")
