@@ -424,6 +424,22 @@ async function beginWorker() {
     }
 }
 
+async function revertFile(folder: string, file: string) {
+    (async function () {
+        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir), { recursive: true }));
+        await ignoreError(fs.promises.rename(
+            path.join(g_config.thumbdir, folder, file + '.png'),
+            path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
+        ));
+    })();
+    let src = path.join(g_config.imagedir, folder, file);
+    let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
+    await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true }));
+    await ignoreError(fs.promises.rename(src, dest));
+    await ignoreError(fs.promises.unlink(src + '.json'));
+    await textdb.remove(folder, file);
+}
+
 let router = express.Router();
 
 router.use(bodyParser.urlencoded({ extended: true, limit: 100*1024*1024 }));
@@ -950,17 +966,9 @@ router.post('/images/:folder/:file/revert', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
 
-    try {
-        await fs.promises.rename(
-            path.join(g_config.imagedir, folder, file),
-            path.join(g_config.imagedir, g_config.unclassifieddir, file)
-        );
-    } catch (e) {
-        res.status(404).end();
-        return;
+    if (validateFilename(folder) && folder !== g_config.unclassifieddir && validateFilename(file)) {
+        await revertFile(folder, file);
     }
-    await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
-    await textdb.remove(folder, file);
     if ('q' in req.body) {
         let query = 'q=' + req.body.q;
         query += '&folder=' + req.body.folder;
@@ -1092,21 +1100,10 @@ router.post('/settings/revert', async function (req, res) {
     try {
         let folder = req.body.folder;
         if (validateFilename(folder) && folder !== g_config.unclassifieddir) {
-            let filelist = await listFiles(path.join(g_config.imagedir, req.body.folder));
+            let filelist = await listFiles(path.join(g_config.imagedir, folder));
             filelist = filelist.filter(validateExtension);
             for (let file of filelist) {
-                (async function () {
-                    await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir), { recursive: true }));
-                    await ignoreError(fs.promises.rename(
-                        path.join(g_config.thumbdir, folder, file + '.png'),
-                        path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
-                    ));
-                })();
-                let src = path.join(g_config.imagedir, req.body.folder, file);
-                let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
-                await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true }));
-                await ignoreError(fs.promises.unlink(src + '.json'));
-                await ignoreError(fs.promises.rename(src, dest));
+                await revertFile(folder, file);
             }
         }
     } catch (e) { }
