@@ -7,18 +7,32 @@ html
     title フィルター設定 - ESFilter
     +style()
     style.
-      th {
-        background-color: #bbc8ee;
+      table {
+        border-collapse: collapse;
       }
-      table, td, th {
+      tr, th {
         border: 1px solid #abe;
       }
-      tbody tr:hover {
-        background-color: #eef;
+      th {
+        background-color: #bbc8ee;
+        text-align: left;
       }
-      .selected td {
-        background-color: #fee !important;
-        border-color: #ebb;
+      tbody tr:hover {
+        background-color: #edf2ff;
+      }
+      .selected {
+        background-color: #ffe4ee !important;
+      }
+      .menu {
+        line-height: 1.5em;
+      }
+      .center {
+        text-align: center !important;
+      }
+      @media only screen and (max-width: 800px) {
+        table {
+            font-size: .9em;
+        }
       }
     script(src="scripts/filters.js")
   body(onload="selectDefault();")
@@ -45,8 +59,8 @@ html
           th
           th フィルタ名
           th 分類先フォルダー
-          th 自動実行
-          th
+          th.center 自動実行
+          th.center
       tbody
         for filter, index in param.filters
           tr(onclick="document.getElementsByName('filter')[" + index + "].checked=true;onradiochange();")
@@ -54,10 +68,10 @@ html
               input(type="radio" name="filter" value=filter.name)
             td=filter.name
             td=filter.folder
-            td=(filter.enabled ? "有効" : "無効")
-            td
+            td.center=(filter.enabled ? "有効" : "無効")
+            td.center
               a(href="filters/" + filter.name) 編集
-    p
+    p.menu
       a(href="javascript:void(0);" onclick="create();") 新規作成
       =" | "
       a(href="javascript:void(0);" onclick="run();") 単独で実行する

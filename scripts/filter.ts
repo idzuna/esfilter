@@ -131,10 +131,12 @@ function selectArea(index: number, openAt: HTMLElement) {
         return;
     }
     let rect = openAt.getBoundingClientRect();
+    let top = window.pageYOffset + rect.bottom;
+    let left = window.pageXOffset + rect.left;
     let areaWindow = document.getElementById('area_window');
     areaWindow.style.display = 'block';
-    areaWindow.style.top = (window.pageYOffset + rect.bottom) + 'px';
-    areaWindow.style.left = (window.pageXOffset + rect.left) + 'px';
+    areaWindow.style.top = top + 'px';
+    areaWindow.style.left = left + 'px';
     g_selectedCondition = index;
     updateCoordinate(index);
 }
@@ -247,9 +249,11 @@ function getColor(openAt: HTMLElement) {
         return;
     }
     let rect = openAt.getBoundingClientRect();
+    let top = window.pageYOffset + rect.bottom;
+    let left = window.pageXOffset + rect.left;
     colorpickerWindow.style.display = 'block';
-    colorpickerWindow.style.top = (window.pageYOffset + rect.bottom) + 'px';
-    colorpickerWindow.style.left = (window.pageXOffset + rect.left) + 'px';
+    colorpickerWindow.style.top = top + 'px';
+    colorpickerWindow.style.left = left + 'px';
     g_colorpickerShowing = true;
 }
 
