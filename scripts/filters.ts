@@ -31,6 +31,24 @@ function validateFilename(filename: string) {
         !filename.match(/[\\\/:,;\*\?"<>\|]/));
 }
 
+window['create'] = create;
+function create() {
+    let name = window.prompt('フィルター名を入力してください', '');
+    if (!name) {
+        return;
+    }
+    if (!validateFilename(name)) {
+        window.alert('無効なフィルター名です');
+        return;
+    }
+    if (exists(name)) {
+        window.alert('フィルター名が重複しています')
+        return;
+    }
+    document.cookie = 'selected=' + name;
+    post('filters/create', { filter: name });
+}
+
 window['run'] = run;
 function run() {
     let filter = findCheckedFilter();
@@ -71,24 +89,6 @@ function down() {
     if (filter) {
         post('filters/' + filter + '/down');
     }
-}
-
-window['newfilter'] = newfilter;
-function newfilter() {
-    let name = window.prompt('フィルター名を入力してください', '');
-    if (!name) {
-        return;
-    }
-    if (!validateFilename(name)) {
-        window.alert('無効なフィルター名です');
-        return;
-    }
-    if (exists(name)) {
-        window.alert('フィルター名が重複しています')
-        return;
-    }
-    document.cookie = 'selected=' + name;
-    post('filters/' + name + '/newfilter');
 }
 
 window['rename'] = rename;

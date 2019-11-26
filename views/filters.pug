@@ -58,6 +58,8 @@ html
             td
               a(href="filters/" + filter.name) 編集
     p
+      a(href="javascript:void(0);" onclick="create();") 新規作成
+      =" | "
       a(href="javascript:void(0);" onclick="run();") 単独で実行する
       =" | "
       a(href="javascript:void(0);" onclick="enable();") 有効にする
@@ -67,8 +69,6 @@ html
       a(href="javascript:void(0);" onclick="up();") 優先順位を上げる
       =" | "
       a(href="javascript:void(0);" onclick="down();") 優先順位を下げる
-      =" | "
-      a(href="javascript:void(0);" onclick="newfilter();") 新規作成
       =" | "
       a(href="javascript:void(0);" onclick="rename();") 名前を変更する
       =" | "

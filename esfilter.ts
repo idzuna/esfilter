@@ -500,6 +500,41 @@ router.get('/filters', function (req, res) {
     });
 });
 
+router.post('/filters/create', async function (req, res) {
+    let filter = req.body.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index >= 0) {
+        res.redirect(g_config.basepath + '/filters?status=error');
+        return;
+    }
+    g_settings.filters.push({
+        name: filter,
+        folder: '新しいフォルダー',
+        enabled: false,
+        conditions: [{
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            operator: 'rgbmse',
+            threshold: 0
+        }],
+        ocrEnabled: false,
+        ocrLeft: 0,
+        ocrTop: 0,
+        ocrWidth: 1,
+        ocrHeight: 1,
+        ocrR: 255,
+        ocrG: 255,
+        ocrB: 255,
+        ocrSpace: 'rgb',
+        ocrThreshold: 10
+    });
+    saveSettings();
+    res.redirect(g_config.basepath + '/filters/' + filter);
+    return;
+});
+
 router.get('/filters/:filter', async function (req, res) {
     let filter = req.params.filter;
     let index = findFilter(filter);
@@ -604,45 +639,6 @@ router.post('/filters/:filter/down', function (req, res) {
         saveSettings();
     }
     res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/newfilter', async function (req, res) {
-    let filter = req.params.filter;
-    if (!validateFilename(filter)) {
-        res.status(400);
-        return;
-    }
-    let index = findFilter(filter);
-    if (index >= 0) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    g_settings.filters.push({
-        name: filter,
-        folder: '',
-        enabled: false,
-        conditions: [{
-            left: 0,
-            top: 0,
-            width: 1,
-            height: 1,
-            operator: 'rgbmse',
-            threshold: 0
-        }],
-        ocrEnabled: false,
-        ocrLeft: 0,
-        ocrTop: 0,
-        ocrWidth: 1,
-        ocrHeight: 1,
-        ocrR: 255,
-        ocrG: 255,
-        ocrB: 255,
-        ocrSpace: 'rgb',
-        ocrThreshold: 10
-    });
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters/' + filter);
-    return;
 });
 
 router.post('/filters/:filter/rename', async function (req, res) {
