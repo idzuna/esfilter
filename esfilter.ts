@@ -424,6 +424,22 @@ async function beginWorker() {
     }
 }
 
+async function revertFile(folder: string, file: string) {
+    (async function () {
+        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir), { recursive: true }));
+        await ignoreError(fs.promises.rename(
+            path.join(g_config.thumbdir, folder, file + '.png'),
+            path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
+        ));
+    })();
+    let src = path.join(g_config.imagedir, folder, file);
+    let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
+    await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true }));
+    await ignoreError(fs.promises.rename(src, dest));
+    await ignoreError(fs.promises.unlink(src + '.json'));
+    await textdb.remove(folder, file);
+}
+
 let router = express.Router();
 
 router.use(bodyParser.urlencoded({ extended: true, limit: 100*1024*1024 }));
@@ -484,16 +500,52 @@ router.get('/filters', function (req, res) {
     });
 });
 
+router.post('/filters/create', async function (req, res) {
+    let filter = req.body.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index >= 0) {
+        res.redirect(g_config.basepath + '/filters?status=error');
+        return;
+    }
+    g_settings.filters.push({
+        name: filter,
+        folder: '新しいフォルダー',
+        enabled: false,
+        conditions: [{
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            operator: 'rgbmse',
+            threshold: 0
+        }],
+        ocrEnabled: false,
+        ocrLeft: 0,
+        ocrTop: 0,
+        ocrWidth: 1,
+        ocrHeight: 1,
+        ocrR: 255,
+        ocrG: 255,
+        ocrB: 255,
+        ocrSpace: 'rgb',
+        ocrThreshold: 10
+    });
+    saveSettings();
+    res.redirect(g_config.basepath + '/filters/' + filter);
+    return;
+});
+
 router.get('/filters/:filter', async function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
     let image = '';
     let mime = '';
     try {
-        image = await fs.promises.readFile(path.join(g_config.presetdir, req.params.filter), 'base64');
+        image = await fs.promises.readFile(path.join(g_config.presetdir, filter), 'base64');
         if (image.substr(0, 2) === 'Qk') {
             mime = 'data:image/bmp;base64,';
         } else if (image.substr(0, 2) === '/9') {
@@ -516,25 +568,27 @@ router.get('/filters/:filter', async function (req, res) {
 });
 
 router.post('/filters/:filter/run', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
     (async function () {
-        info('フィルター "' + req.params.filter + '" の単独実行を開始します');
+        info('フィルター "' + filter + '" の単独実行を開始します');
         if (await runSingleFilter(g_settings.filters[index])) {
-            info('フィルター "' + req.params.filter + '" の単独実行を完了しました');
+            info('フィルター "' + filter + '" の単独実行を完了しました');
         } else {
-            info('他のジョブが実行中のためフィルター "' + req.params.filter + '" の単独実行を中止しました');
+            info('他のジョブが実行中のためフィルター "' + filter + '" の単独実行を中止しました');
         }
     })();
     res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/enable', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
@@ -544,8 +598,9 @@ router.post('/filters/:filter/enable', function (req, res) {
 });
 
 router.post('/filters/:filter/disable', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
@@ -555,8 +610,9 @@ router.post('/filters/:filter/disable', function (req, res) {
 });
 
 router.post('/filters/:filter/up', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
@@ -570,8 +626,9 @@ router.post('/filters/:filter/up', function (req, res) {
 });
 
 router.post('/filters/:filter/down', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
@@ -584,91 +641,49 @@ router.post('/filters/:filter/down', function (req, res) {
     res.redirect(g_config.basepath + '/filters');
 });
 
-router.post('/filters/:filter/newfilter', async function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index >= 0) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    if (!validateFilename(req.params.filter)) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    g_settings.filters.push({
-        name: req.params.filter,
-        folder: '',
-        enabled: false,
-        conditions: [{
-            left: 0,
-            top: 0,
-            width: 1,
-            height: 1,
-            operator: 'rgbmse',
-            threshold: 0
-        }],
-        ocrEnabled: false,
-        ocrLeft: 0,
-        ocrTop: 0,
-        ocrWidth: 1,
-        ocrHeight: 1,
-        ocrR: 255,
-        ocrG: 255,
-        ocrB: 255,
-        ocrSpace: 'rgb',
-        ocrThreshold: 10
-    });
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters/' + req.params.filter);
-    return;
-});
-
 router.post('/filters/:filter/rename', async function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
-    if (!validateFilename(req.query.newname)) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    let newindex = findFilter(req.query.newname);
-    if (newindex >= 0) {
+    let newname = req.query.newname;
+    let newindex = findFilter(newname);
+    if (!validateFilename(newname) || newindex >= 0) {
         res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     await ignoreError(fs.promises.rename(
-        path.join(g_config.presetdir, req.params.filter),
-        path.join(g_config.presetdir, req.query.newname)
+        path.join(g_config.presetdir, filter),
+        path.join(g_config.presetdir, newname)
     ));
-    g_settings.filters[index].name = req.query.newname;
+    g_settings.filters[index].name = newname;
     saveSettings();
     res.redirect(g_config.basepath + '/filters');
     return;
 });
 
 router.post('/filters/:filter/copy', async function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
-    if (!validateFilename(req.query.newname)) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    let newindex = findFilter(req.query.newname);
-    if (newindex >= 0) {
+    let newname = req.query.newname;
+    let newindex = findFilter(newname);
+    if (!validateFilename(newname) || newindex >= 0) {
         res.redirect(g_config.basepath + '/filters?status=error');
         return;
     }
     await ignoreError(fs.promises.copyFile(
-        path.join(g_config.presetdir, req.params.filter),
-        path.join(g_config.presetdir, req.query.newname)
+        path.join(g_config.presetdir, filter),
+        path.join(g_config.presetdir, newname)
     ));
     let original = g_settings.filters[index];
     let newfilter: Filter = {
-        name: req.query.newname,
+        name: newname,
         folder: original.folder,
         enabled: original.enabled,
         conditions: [],
@@ -707,32 +722,35 @@ router.post('/filters/:filter/copy', async function (req, res) {
 });
 
 router.post('/filters/:filter/remove', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
     g_settings.filters.splice(index, 1);
-    fs.unlink(path.join(g_config.presetdir, req.params.filter), function () { });
+    fs.unlink(path.join(g_config.presetdir, filter), function () { });
     saveSettings();
     res.redirect(g_config.basepath + '/filters');
 });
 
 router.post('/filters/:filter/edit', function (req, res) {
-    let index = findFilter(req.params.filter);
-    if (index < 0) {
+    let filter = req.params.filter;
+    let index = findFilter(filter);
+    if (!validateFilename(filter) || index < 0) {
         res.status(404);
         return;
     }
-    if (!validateFilename(req.body.folder)) {
-        res.redirect(g_config.basepath + '/filters?status=error');
+    let folder = req.body.folder;
+    if (!validateFilename(folder)) {
+        res.status(400);
         return;
     }
     let count = req.body.left.length;
     let original = g_settings.filters[index];
     let newfilter: Filter = {
         name: original.name,
-        folder: req.body.folder,
+        folder: folder,
         enabled: original.enabled,
         conditions: [],
         ocrEnabled: !!req.body.ocr_enabled,
@@ -771,18 +789,22 @@ router.post('/filters/:filter/edit', function (req, res) {
 
     let imageBody = req.body.image.split(',')[1];
     if (!imageBody) {
-        res.redirect(g_config.basepath + '/filters?status=error');
+        res.status(400);
         return;
     }
     g_settings.filters[index] = newfilter;
     let bytes = Buffer.from(imageBody, 'base64');
-    fs.promises.writeFile(path.join(g_config.presetdir, req.params.filter), bytes);
+    fs.promises.writeFile(path.join(g_config.presetdir, filter), bytes);
     saveSettings();
     res.redirect(g_config.basepath + '/filters');
 });
 
 router.get('/images/:folder', async function (req, res) {
     let folder = req.params.folder;
+    if (!validateFilename(folder)) {
+        res.status(404).end();
+        return;
+    }
     let filelist = await listFiles(path.join(g_config.imagedir, folder));
     filelist = filelist.filter(validateExtension);
     if (req.query.type && req.query.type === 'json') {
@@ -824,54 +846,55 @@ router.get('/images/:folder', async function (req, res) {
 router.get('/images/:folder/:file', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
-    if (!validateExtension(file)) {
-        res.status(404);
+    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+        res.status(404).end();
         return;
     }
     let image = path.join(g_config.imagedir, folder, file);
-    if (req.query.type) {
-        if (req.query.type === 'json') {
-            try {
-                let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-                res.json(JSON.parse(json));
-                return;
-            } catch (e) {}
-            try {
-                let dimension = await getImageDimension(image);
-                res.json(dimension);
-                return;
-            } catch (e) { }
-            res.json({ width: 0, height: 0 });
+    if (req.query.type === 'json') {
+        try {
+            let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+            res.json(JSON.parse(json));
             return;
-        }
-        if (req.query.type === 'thumb') {
-            let thumb = path.join(g_config.thumbdir, folder, file + '.png');
-            let statimage: fs.Stats;
-            let statthumb: fs.Stats;
-            try {
-                statimage = await fs.promises.stat(image);
-            } catch (e) {
-                res.status(404).end();
-                return;
-            }
-            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder), { recursive: true }));
-            statthumb = await ignoreError(fs.promises.stat(thumb));
-            if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
-                try {
-                    await resize(image, thumb, 256, 256);
-                } catch (e) {}
-            }
-            res.sendFile(thumb);
+        } catch (e) {}
+        try {
+            let dimension = await getImageDimension(image);
+            res.json(dimension);
             return;
-        }
-    } else {
-        res.sendFile(image);
+        } catch (e) { }
+        res.json({ width: 0, height: 0 });
+        return;
     }
+    if (req.query.type === 'thumb') {
+        let thumb = path.join(g_config.thumbdir, folder, file + '.png');
+        let statimage: fs.Stats;
+        let statthumb: fs.Stats;
+        try {
+            statimage = await fs.promises.stat(image);
+        } catch (e) {
+            res.status(404).end();
+            return;
+        }
+        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder), { recursive: true }));
+        statthumb = await ignoreError(fs.promises.stat(thumb));
+        if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
+            try {
+                await resize(image, thumb, 256, 256);
+            } catch (e) {}
+        }
+        res.sendFile(thumb);
+        return;
+    }
+    res.sendFile(image);
 });
 
 router.get('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+        res.status(404).end();
+        return;
+    }
     let searching = ('string' === typeof req.query.q);
 
     try {
@@ -908,6 +931,10 @@ router.get('/images/:folder/:file/edittext', async function (req, res) {
 router.post('/images/:folder/:file/edittext', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
+    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+        res.status(404).end();
+        return;
+    }
     let searching = ('string' === typeof req.body.q);
 
     try {
@@ -949,18 +976,13 @@ router.post('/images/:folder/:file/edittext', async function (req, res) {
 router.post('/images/:folder/:file/revert', async function (req, res) {
     let folder = req.params.folder;
     let file = req.params.file;
-
-    try {
-        await fs.promises.rename(
-            path.join(g_config.imagedir, folder, file),
-            path.join(g_config.imagedir, g_config.unclassifieddir, file)
-        );
-    } catch (e) {
+    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
         res.status(404).end();
         return;
     }
-    await fs.promises.unlink(path.join(g_config.imagedir, folder, file + '.json'));
-    await textdb.remove(folder, file);
+    if (folder !== g_config.unclassifieddir) {
+        await revertFile(folder, file);
+    }
     if ('q' in req.body) {
         let query = 'q=' + req.body.q;
         query += '&folder=' + req.body.folder;
@@ -972,8 +994,11 @@ router.post('/images/:folder/:file/revert', async function (req, res) {
 });
 
 router.get('/search', async function (req, res) {
+    let folder = req.query.folder;
+    if (!validateFilename(folder)) {
+        folder = '';
+    }
     let q = ('string' === typeof req.query.q) ? req.query.q : '';
-    let folder = ('string' === typeof req.query.folder) ? req.query.folder : '';
     let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
 
     if ('string' !== typeof req.query.q) {
@@ -1036,7 +1061,7 @@ router.get('/search', async function (req, res) {
 });
 
 router.get('/log', async function (req, res) {
-    if (req.query.type && req.query.type === 'json') {
+    if (req.query.type === 'json') {
         res.json(g_info);
     } else {
         res.render('log', {
@@ -1061,7 +1086,7 @@ router.get('/settings', async function (req, res) {
 });
 
 router.post('/settings', function (req, res) {
-    g_settings.enableFuzzySearch = req.body.enable_fuzzy_search;
+    g_settings.enableFuzzySearch = !!req.body.enable_fuzzy_search;
 
     if (req.body.images_per_page === '20') {
         g_settings.imagesPerPage = 20;
@@ -1089,24 +1114,18 @@ router.post('/settings/refresh', function (req, res) {
 });
 
 router.post('/settings/revert', async function (req, res) {
+    let folder = req.body.folder;
+    if (!validateFilename(folder)) {
+        res.status(400).end();
+        return;
+    }
+
     try {
-        let folder = req.body.folder;
-        if (validateFilename(folder) && folder !== g_config.unclassifieddir) {
-            let filelist = await listFiles(path.join(g_config.imagedir, req.body.folder));
+        if (folder !== g_config.unclassifieddir) {
+            let filelist = await listFiles(path.join(g_config.imagedir, folder));
             filelist = filelist.filter(validateExtension);
             for (let file of filelist) {
-                (async function () {
-                    await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, g_config.unclassifieddir), { recursive: true }));
-                    await ignoreError(fs.promises.rename(
-                        path.join(g_config.thumbdir, folder, file + '.png'),
-                        path.join(g_config.thumbdir, g_config.unclassifieddir, file + '.png')
-                    ));
-                })();
-                let src = path.join(g_config.imagedir, req.body.folder, file);
-                let dest = path.join(g_config.imagedir, g_config.unclassifieddir, file);
-                await ignoreError(fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true }));
-                await ignoreError(fs.promises.unlink(src + '.json'));
-                await ignoreError(fs.promises.rename(src, dest));
+                await revertFile(folder, file);
             }
         }
     } catch (e) { }
