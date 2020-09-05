@@ -649,6 +649,10 @@ router.post('/filters/:filter/rename', async function (req, res) {
         return;
     }
     let newname = req.query.newname;
+    if (typeof newname !== 'string') {
+        res.redirect(g_config.basepath + '/filters?status=error');
+        return;
+    }
     let newindex = findFilter(newname);
     if (!validateFilename(newname) || newindex >= 0) {
         res.redirect(g_config.basepath + '/filters?status=error');
@@ -672,6 +676,10 @@ router.post('/filters/:filter/copy', async function (req, res) {
         return;
     }
     let newname = req.query.newname;
+    if (typeof newname !== 'string') {
+        res.redirect(g_config.basepath + '/filters?status=error');
+        return;
+    }
     let newindex = findFilter(newname);
     if (!validateFilename(newname) || newindex >= 0) {
         res.redirect(g_config.basepath + '/filters?status=error');
@@ -811,7 +819,7 @@ router.get('/images/:folder', async function (req, res) {
         res.json(filelist);
     } else {
         let pages = Math.ceil(filelist.length / g_settings.imagesPerPage);
-        let page = req.query.page ? parseInt(req.query.page) : 0;
+        let page = typeof req.query.page === 'string' ? parseInt(req.query.page) : 0;
         filelist = filelist.slice(
             g_settings.imagesPerPage * page,
             g_settings.imagesPerPage * (page + 1)
@@ -995,7 +1003,7 @@ router.post('/images/:folder/:file/revert', async function (req, res) {
 
 router.get('/search', async function (req, res) {
     let folder = req.query.folder;
-    if (!validateFilename(folder)) {
+    if (typeof folder !== 'string' || !validateFilename(folder)) {
         folder = '';
     }
     let q = ('string' === typeof req.query.q) ? req.query.q : '';
