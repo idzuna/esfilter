@@ -49,11 +49,12 @@ Windows 8.1 64bit 版で動作を確認しています．その他の OS でも 
 
 ### 言語データの追加と変更
 
-* tessdata 以下に Tesseract の言語データ (*.traineddata) またはそれを圧縮したファイル (*.traineddata.gz) を入れると，文字認識に使用する言語データとして，フィルターの設定で指定できるようになります
-* 標準で [tesseract_best リポジトリ](https://github.com/tesseract-ocr/tessdata_best)の jpn.traineddata と jpn_vert.traineddata を入れてあります
+* tessdata 以下に Tesseract の言語データ (\*.traineddata) またはそれを圧縮したファイル (\*.traineddata.gz) を入れると，文字認識に使用する言語データとして，フィルターの設定で指定できるようになります
+* 標準で [tesseract_best](https://github.com/tesseract-ocr/tessdata_best) の jpn.traineddata と jpn_vert.traineddata を入れてあります
 
 ## 更新履歴
 
+- 0.5.0 - 2020/11/15 - フィルターを最上位・最下位へ移動する機能，言語データを追加する機能，白抜き文字の認識を補助する機能の追加
 - 0.4.2 - 2019/11/28 - ユーザーインターフェースの調整，バグ修正
 - 0.4.1 - 2019/11/24 - ナビゲーションのリンクの修正
 - 0.4.0 - 2019/11/24 - ユーザーインターフェースの調整

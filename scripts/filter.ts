@@ -516,7 +516,8 @@ async function testExec() {
             b: parseInt(getInputElement('ocr_b').value)
         },
         space: <any>(<HTMLSelectElement>document.getElementsByName('ocr_space')[0]).value,
-        distance: Number(getInputElement('ocr_threshold').value)
+        distance: Number(getInputElement('ocr_threshold').value),
+        fills: getInputElement('ocr_fills').checked
     };
     let worker;
     if (ocrEnabled) {

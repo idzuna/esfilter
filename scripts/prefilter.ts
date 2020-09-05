@@ -7,6 +7,7 @@ export class PrefilterOptions {
     };
     space: 'rgb' | 'r' | 'g' | 'b' | 'y' | 'lab';
     distance: number;
+    fills: boolean;
 }
 
 function plot(image: ImageData, x: number, y: number, condition: boolean) {
@@ -173,6 +174,110 @@ function binarizeByLabDistance(
     }
 }
 
+function fill(image: ImageData) {
+    function get(x: number, y: number) {
+        return image.data[(x + y * image.width) * 4];
+    }
+    function set(x: number, y: number, value: number) {
+        let index = (x + y * image.width) * 4;
+        image.data[index] = value;
+        image.data[index + 1] = value;
+        image.data[index + 2] = value;
+        image.data[index + 3] = 255;
+    }
+    let buf = new Uint8Array(image.width * image.height);
+    function getbuf(x: number, y: number) {
+        return buf[x + y * image.width];
+    }
+    function setbuf(x: number, y: number, value: number) {
+        buf[x + y * image.width] = value;
+    }
+    for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+            setbuf(x, y, get(x, y));
+        }
+    }
+    {
+        let updates: { x: number, y: number }[] = [];
+        if (get(0, 0) === 0) {
+            set(0, 0, 255);
+            setbuf(0, 0, 1);
+            updates.push({ x: 0, y: 0 });
+        }
+        while (updates.length > 0) {
+            let pos = updates.pop();
+            if (pos.x - 1 >= 0 && get(pos.x - 1, pos.y) === 0) {
+                set(pos.x - 1, pos.y, 255);
+                setbuf(pos.x - 1, pos.y, 1);
+                updates.push({ x: pos.x - 1, y: pos.y });
+            }
+            if (pos.x + 1 < image.width && get(pos.x + 1, pos.y) === 0) {
+                set(pos.x + 1, pos.y, 255);
+                setbuf(pos.x + 1, pos.y, 1);
+                updates.push({ x: pos.x + 1, y: pos.y });
+            }
+            if (pos.y - 1 >= 0 && get(pos.x, pos.y - 1) === 0) {
+                set(pos.x, pos.y - 1, 255);
+                setbuf(pos.x, pos.y - 1, 1);
+                updates.push({ x: pos.x, y: pos.y - 1 });
+            }
+            if (pos.y + 1 < image.height && get(pos.x, pos.y + 1) === 0) {
+                set(pos.x, pos.y + 1, 255);
+                setbuf(pos.x, pos.y + 1, 1);
+                updates.push({ x: pos.x, y: pos.y + 1 });
+            }
+        }
+    }
+    for (let i = 1; i <= 2; i++) {
+        for (let y = 1; y < image.height - 1; y++) {
+            for (let x = 1; x < image.width - 1; x++) {
+                if (getbuf(x, y) !== i) {
+                    if (getbuf(x - 1, y) === i ||
+                        getbuf(x + 1, y) === i ||
+                        getbuf(x, y - 1) === i ||
+                        getbuf(x, y + 1) === i
+                    ) {
+                        setbuf(x, y, i + 1);
+                    }
+                }
+            }
+        }
+    }
+    {
+        let updates: { x: number, y: number }[] = [];
+        if (getbuf(0, 0) !== 255) {
+            setbuf(0, 0, 255);
+            updates.push({ x: 0, y: 0 });
+        }
+        while (updates.length > 0) {
+            let pos = updates.pop();
+            if (pos.x - 1 >= 0 && getbuf(pos.x - 1, pos.y) !== 255) {
+                setbuf(pos.x - 1, pos.y, 255);
+                updates.push({ x: pos.x - 1, y: pos.y });
+            }
+            if (pos.x + 1 < image.width && getbuf(pos.x + 1, pos.y) !== 255) {
+                setbuf(pos.x + 1, pos.y, 255);
+                updates.push({ x: pos.x + 1, y: pos.y });
+            }
+            if (pos.y - 1 >= 0 && getbuf(pos.x, pos.y - 1) !== 255) {
+                setbuf(pos.x, pos.y - 1, 255);
+                updates.push({ x: pos.x, y: pos.y - 1 });
+            }
+            if (pos.y + 1 < image.height && getbuf(pos.x, pos.y + 1) !== 255) {
+                setbuf(pos.x, pos.y + 1, 255);
+                updates.push({ x: pos.x, y: pos.y + 1 });
+            }
+        }
+    }
+    for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+            if (getbuf(x, y) !== 255) {
+                set(x, y, 255);
+            }
+        }
+    }
+}
+
 export function prefilter(
     canvas: HTMLCanvasElement,
     image: ImageData,
@@ -202,6 +307,9 @@ export function prefilter(
         case 'lab':
             binarizeByLabDistance(image, filtered, area.left, area.top, options.textColor, options.distance);
             break;
+    }
+    if (options.fills) {
+        fill(filtered);
     }
     ctx.putImageData(filtered, 0, 0);
 }

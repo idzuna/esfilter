@@ -155,6 +155,11 @@ html
                   else
                     option(value=value)=value
           tr
+            th 白抜き文字対策
+            td
+              input(type="checkbox" name="ocr_fills" checked=param.filter.ocrFills)
+              ="外側を塗りつぶす"
+          tr
             th(colspan="2")
               input(type="button" value="決定" onclick="onFilterSubmit();")
     script
