@@ -49,6 +49,7 @@ class Filter {
     ocrB: number;
     ocrSpace: string;
     ocrThreshold: number;
+    ocrFills: boolean;
 };
 class Settings {
     autofilterenabled: boolean;
@@ -252,7 +253,8 @@ async function runOcr(image: ImageData, filter: Filter, resultFile: string) {
     let options: prefilter.PrefilterOptions = {
         textColor: { r: filter.ocrR, g: filter.ocrG, b: filter.ocrB },
         space: <any>filter.ocrSpace,
-        distance: filter.ocrThreshold
+        distance: filter.ocrThreshold,
+        fills: filter.ocrFills
     };
     prefilter.prefilter(<any>c, image, area, options);
     let out = fs.createWriteStream('ocrtemp.png');
@@ -528,7 +530,8 @@ router.post('/filters/create', async function (req, res) {
         ocrG: 255,
         ocrB: 255,
         ocrSpace: 'rgb',
-        ocrThreshold: 10
+        ocrThreshold: 10,
+        ocrFills: false
     });
     saveSettings();
     res.redirect(g_config.basepath + '/filters/' + filter);
@@ -696,7 +699,8 @@ router.post('/filters/:filter/copy', async function (req, res) {
         ocrG: original.ocrG,
         ocrB: original.ocrB,
         ocrSpace: original.ocrSpace,
-        ocrThreshold: original.ocrThreshold
+        ocrThreshold: original.ocrThreshold,
+        ocrFills: original.ocrFills
     };
     for (let condition of original.conditions) {
         newfilter.conditions.push({
@@ -762,7 +766,8 @@ router.post('/filters/:filter/edit', function (req, res) {
         ocrG: parseInt(req.body.ocr_g),
         ocrB: parseInt(req.body.ocr_b),
         ocrSpace: req.body.ocr_space,
-        ocrThreshold: Number(req.body.ocr_threshold)
+        ocrThreshold: Number(req.body.ocr_threshold),
+        ocrFills: !!req.body.ocr_fills
     };
     if (Array.isArray(req.body.left)) {
         for (let i = 0; i < req.body.left.length; i++) {

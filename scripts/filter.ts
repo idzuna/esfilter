@@ -516,7 +516,8 @@ async function testExec() {
             b: parseInt(getInputElement('ocr_b').value)
         },
         space: <any>(<HTMLSelectElement>document.getElementsByName('ocr_space')[0]).value,
-        distance: Number(getInputElement('ocr_threshold').value)
+        distance: Number(getInputElement('ocr_threshold').value),
+        fills: getInputElement('ocr_fills').checked
     };
     if (ocrEnabled) {
         let th = document.createElement('th');
@@ -527,7 +528,7 @@ async function testExec() {
         document.getElementById('test_message').innerText = '文字認識エンジン初期化中';
 
         if (!g_worker) {
-            g_worker = window['Tesseract'].createWorker();
+            g_worker = window['Tesseract'].createWorker({ langPath: '../scripts' });
             await g_worker.load();
             await g_worker.loadLanguage('jpn');
             await g_worker.initialize('jpn');
