@@ -57,35 +57,13 @@ class Settings {
     filters: Filter[];
 };
 
-let g_config = <Config>JSON.parse(fs.readFileSync('config.json', 'utf8'));
+let g_log = <string[]>[];
+let g_busy = false;
 
-let g_settings = <Settings>{};
-try {
-    fs.copyFileSync(
-        path.join(__dirname, 'settings.json'),
-        path.join(__dirname, 'settings.json.bak')
-    );
-    g_settings = <Settings>JSON.parse(fs.readFileSync('settings.json', 'utf8'));
-}
-catch (e) {
-    g_settings = {
-        autofilterenabled: false,
-        imagesPerPage: 50,
-        enableFuzzySearch: true,
-        filters: []
-    };
-}
-if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
-    g_settings.imagesPerPage = 20;
-}
-
-g_config.basepath = g_config.basepath.replace(/^(\/)?/, '/').replace(/\/$/, '');
-g_config.thumbdir = path.resolve(g_config.thumbdir);
-g_config.imagedir = path.resolve(g_config.imagedir);
-g_config.presetdir = path.resolve(g_config.presetdir);
-fs.mkdirSync(g_config.thumbdir, { recursive: true });
-fs.mkdirSync(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true });
-fs.mkdirSync(g_config.presetdir, { recursive: true });
+let g_config: Config;
+let g_settings: Settings;
+let g_worker: tesseract.Worker;
+let g_ocrWorkerInitialized: Promise<void>;
 
 function formatDate(date: Date) {
     let dateString = '';
@@ -98,11 +76,10 @@ function formatDate(date: Date) {
     return dateString;
 }
 
-let g_info = <string[]>[];
 function info(message: string) {
     let date = formatDate(new Date());
     console.log(date + ' ' + message);
-    g_info.push(date + ' ' + message);
+    g_log.push(date + ' ' + message);
 }
 
 function saveSettings() {
@@ -227,10 +204,6 @@ async function resize(input: string, output: string, width: number, height: numb
     c.createPNGStream().pipe(out);
     await promise;
 }
-
-let g_busy = false;
-let g_worker: tesseract.Worker;
-let g_ocrWorkerInitialized: Promise<void>;
 
 async function initializeOcrWorker()
 {
@@ -408,20 +381,22 @@ async function runFilters() {
     return true;
 }
 
-async function beginWorker() {
-    while (true) {
-        if (g_settings.autofilterenabled) {
-            try {
-                let files = await listFiles(path.join(g_config.imagedir, g_config.unclassifieddir));
-                let imageFiles = files.filter(validateExtension);
-                if (imageFiles.length > 0) {
-                    await runFilters();
+function beginWorker() {
+    (async function () {
+        while (true) {
+            if (g_settings.autofilterenabled) {
+                try {
+                    let files = await listFiles(path.join(g_config.imagedir, g_config.unclassifieddir));
+                    let imageFiles = files.filter(validateExtension);
+                    if (imageFiles.length > 0) {
+                        await runFilters();
+                    }
+                } catch (e) {
                 }
-            } catch (e) {
             }
+            await new Promise(function (resolve) { setTimeout(resolve, 1000); });
         }
-        await new Promise(function (resolve) { setTimeout(resolve, 1000); });
-    }
+    })();
 }
 
 async function revertFile(folder: string, file: string) {
@@ -440,730 +415,771 @@ async function revertFile(folder: string, file: string) {
     await textdb.remove(folder, file);
 }
 
-let router = express.Router();
+function startExpress() {
 
-router.use(bodyParser.urlencoded({ extended: true, limit: 100*1024*1024 }));
+    let router = express.Router();
 
-router.get('/', async function (req, res) {
-    let folders = await listDirectories(g_config.imagedir);
-    res.render('index', {
-        param: {
-            isAutoFilterEnabled: g_settings.autofilterenabled,
-            folders: folders,
-            log: g_info
-        }
-    });
-});
+    router.use(bodyParser.urlencoded({ extended: true, limit: 100 * 1024 * 1024 }));
 
-router.post('/autofilter/enable', function (req, res) {
-    if (!g_settings.autofilterenabled) {
-        info('フィルターの自動実行を開始します');
-        g_settings.autofilterenabled = true;
-        saveSettings();
-    }
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/autofilter/disable', function (req, res) {
-    if (g_settings.autofilterenabled) {
-        info('フィルターの自動実行を停止します');
-        g_settings.autofilterenabled = false;
-        saveSettings();
-    }
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/autofilter/once', function (req, res) {
-    if (g_settings.autofilterenabled) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    (async function () {
-        info('フィルターの単発実行を開始します');
-        if (await runFilters()) {
-            info('フィルターの単発実行を完了しました');
-        } else {
-            info('他のジョブが実行中のためフィルターの単発実行を中止しました');
-        }
-    })();
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.get('/filters', function (req, res) {
-    res.render('filters', {
-        param: {
-            filters: g_settings.filters,
-            isAutoFilterEnabled: g_settings.autofilterenabled,
-            status: req.query.status,
-            log: g_info
-        }
-    });
-});
-
-router.post('/filters/create', async function (req, res) {
-    let filter = req.body.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index >= 0) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    g_settings.filters.push({
-        name: filter,
-        folder: '新しいフォルダー',
-        enabled: false,
-        conditions: [{
-            left: 0,
-            top: 0,
-            width: 1,
-            height: 1,
-            operator: 'rgbmse',
-            threshold: 0
-        }],
-        ocrEnabled: false,
-        ocrLeft: 0,
-        ocrTop: 0,
-        ocrWidth: 1,
-        ocrHeight: 1,
-        ocrR: 255,
-        ocrG: 255,
-        ocrB: 255,
-        ocrSpace: 'rgb',
-        ocrThreshold: 10
-    });
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters/' + filter);
-    return;
-});
-
-router.get('/filters/:filter', async function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    let image = '';
-    let mime = '';
-    try {
-        image = await fs.promises.readFile(path.join(g_config.presetdir, filter), 'base64');
-        if (image.substr(0, 2) === 'Qk') {
-            mime = 'data:image/bmp;base64,';
-        } else if (image.substr(0, 2) === '/9') {
-            mime = 'data:image/jpeg;base64,';
-        } else if (image.substr(0, 5) === 'iVBOR') {
-            mime = 'data:image/png;base64,';
-        } else {
-            mime = 'data:image/unknown;base64,';
-        }
-    }
-    catch (e) {
-    }
-    res.render('filter', {
-        param: {
-            filter: g_settings.filters[index],
-            image: mime + image,
-            folders: await listDirectories(g_config.imagedir)
-        }
-    });
-});
-
-router.post('/filters/:filter/run', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    (async function () {
-        info('フィルター "' + filter + '" の単独実行を開始します');
-        if (await runSingleFilter(g_settings.filters[index])) {
-            info('フィルター "' + filter + '" の単独実行を完了しました');
-        } else {
-            info('他のジョブが実行中のためフィルター "' + filter + '" の単独実行を中止しました');
-        }
-    })();
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/enable', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    g_settings.filters[index].enabled = true;
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/disable', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    g_settings.filters[index].enabled = false;
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/up', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    if (index > 0) {
-        let tmp = g_settings.filters[index];
-        g_settings.filters[index] = g_settings.filters[index - 1];
-        g_settings.filters[index - 1] = tmp;
-        saveSettings();
-    }
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/down', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    if (index + 1 < g_settings.filters.length) {
-        let tmp = g_settings.filters[index];
-        g_settings.filters[index] = g_settings.filters[index + 1];
-        g_settings.filters[index + 1] = tmp;
-        saveSettings();
-    }
-    res.redirect(g_config.basepath + '/filters');
-});
-
-router.post('/filters/:filter/rename', async function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    let newname = req.query.newname;
-    if (typeof newname !== 'string') {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    let newindex = findFilter(newname);
-    if (!validateFilename(newname) || newindex >= 0) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    await ignoreError(fs.promises.rename(
-        path.join(g_config.presetdir, filter),
-        path.join(g_config.presetdir, newname)
-    ));
-    g_settings.filters[index].name = newname;
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-    return;
-});
-
-router.post('/filters/:filter/copy', async function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    let newname = req.query.newname;
-    if (typeof newname !== 'string') {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    let newindex = findFilter(newname);
-    if (!validateFilename(newname) || newindex >= 0) {
-        res.redirect(g_config.basepath + '/filters?status=error');
-        return;
-    }
-    await ignoreError(fs.promises.copyFile(
-        path.join(g_config.presetdir, filter),
-        path.join(g_config.presetdir, newname)
-    ));
-    let original = g_settings.filters[index];
-    let newfilter: Filter = {
-        name: newname,
-        folder: original.folder,
-        enabled: original.enabled,
-        conditions: [],
-        ocrEnabled: original.ocrEnabled,
-        ocrLeft: original.ocrLeft,
-        ocrTop: original.ocrTop,
-        ocrWidth: original.ocrWidth,
-        ocrHeight: original.ocrHeight,
-        ocrR: original.ocrR,
-        ocrG: original.ocrG,
-        ocrB: original.ocrB,
-        ocrSpace: original.ocrSpace,
-        ocrThreshold: original.ocrThreshold
-    };
-    for (let condition of original.conditions) {
-        newfilter.conditions.push({
-            left: condition.left,
-            top: condition.top,
-            width: condition.width,
-            height: condition.height,
-            operator: condition.operator,
-            threshold: condition.threshold
+    router.get('/', async function (req, res) {
+        let folders = await listDirectories(g_config.imagedir);
+        res.render('index', {
+            param: {
+                isAutoFilterEnabled: g_settings.autofilterenabled,
+                folders: folders,
+                log: g_log
+            }
         });
-    }
-    if (index === g_settings.filters.length - 1) {
-        g_settings.filters.push(newfilter);
-    } else {
-        g_settings.filters = g_settings.filters
-            .slice(0, index + 1)
-            .concat(newfilter)
-            .concat(g_settings.filters.slice(index + 1));
-    }
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-    return;
-});
+    });
 
-router.post('/filters/:filter/remove', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
-        return;
-    }
-    g_settings.filters.splice(index, 1);
-    fs.unlink(path.join(g_config.presetdir, filter), function () { });
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-});
+    router.post('/autofilter/enable', function (req, res) {
+        if (!g_settings.autofilterenabled) {
+            info('フィルターの自動実行を開始します');
+            g_settings.autofilterenabled = true;
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
 
-router.post('/filters/:filter/edit', function (req, res) {
-    let filter = req.params.filter;
-    let index = findFilter(filter);
-    if (!validateFilename(filter) || index < 0) {
-        res.status(404);
+    router.post('/autofilter/disable', function (req, res) {
+        if (g_settings.autofilterenabled) {
+            info('フィルターの自動実行を停止します');
+            g_settings.autofilterenabled = false;
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/autofilter/once', function (req, res) {
+        if (g_settings.autofilterenabled) {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        (async function () {
+            info('フィルターの単発実行を開始します');
+            if (await runFilters()) {
+                info('フィルターの単発実行を完了しました');
+            } else {
+                info('他のジョブが実行中のためフィルターの単発実行を中止しました');
+            }
+        })();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.get('/filters', function (req, res) {
+        res.render('filters', {
+            param: {
+                filters: g_settings.filters,
+                isAutoFilterEnabled: g_settings.autofilterenabled,
+                status: req.query.status,
+                log: g_log
+            }
+        });
+    });
+
+    router.post('/filters/create', async function (req, res) {
+        let filter = req.body.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index >= 0) {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        g_settings.filters.push({
+            name: filter,
+            folder: '新しいフォルダー',
+            enabled: false,
+            conditions: [{
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+                operator: 'rgbmse',
+                threshold: 0
+            }],
+            ocrEnabled: false,
+            ocrLeft: 0,
+            ocrTop: 0,
+            ocrWidth: 1,
+            ocrHeight: 1,
+            ocrR: 255,
+            ocrG: 255,
+            ocrB: 255,
+            ocrSpace: 'rgb',
+            ocrThreshold: 10
+        });
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters/' + filter);
         return;
-    }
-    let folder = req.body.folder;
-    if (!validateFilename(folder)) {
-        res.status(400);
+    });
+
+    router.get('/filters/:filter', async function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        let image = '';
+        let mime = '';
+        try {
+            image = await fs.promises.readFile(path.join(g_config.presetdir, filter), 'base64');
+            if (image.substr(0, 2) === 'Qk') {
+                mime = 'data:image/bmp;base64,';
+            } else if (image.substr(0, 2) === '/9') {
+                mime = 'data:image/jpeg;base64,';
+            } else if (image.substr(0, 5) === 'iVBOR') {
+                mime = 'data:image/png;base64,';
+            } else {
+                mime = 'data:image/unknown;base64,';
+            }
+        }
+        catch (e) {
+        }
+        res.render('filter', {
+            param: {
+                filter: g_settings.filters[index],
+                image: mime + image,
+                folders: await listDirectories(g_config.imagedir)
+            }
+        });
+    });
+
+    router.post('/filters/:filter/run', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        (async function () {
+            info('フィルター "' + filter + '" の単独実行を開始します');
+            if (await runSingleFilter(g_settings.filters[index])) {
+                info('フィルター "' + filter + '" の単独実行を完了しました');
+            } else {
+                info('他のジョブが実行中のためフィルター "' + filter + '" の単独実行を中止しました');
+            }
+        })();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/enable', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        g_settings.filters[index].enabled = true;
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/disable', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        g_settings.filters[index].enabled = false;
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/up', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        if (index > 0) {
+            let tmp = g_settings.filters[index];
+            g_settings.filters[index] = g_settings.filters[index - 1];
+            g_settings.filters[index - 1] = tmp;
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/down', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        if (index + 1 < g_settings.filters.length) {
+            let tmp = g_settings.filters[index];
+            g_settings.filters[index] = g_settings.filters[index + 1];
+            g_settings.filters[index + 1] = tmp;
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/rename', async function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        let newname = req.query.newname;
+        if (typeof newname !== 'string') {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        let newindex = findFilter(newname);
+        if (!validateFilename(newname) || newindex >= 0) {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        await ignoreError(fs.promises.rename(
+            path.join(g_config.presetdir, filter),
+            path.join(g_config.presetdir, newname)
+        ));
+        g_settings.filters[index].name = newname;
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
         return;
-    }
-    let count = req.body.left.length;
-    let original = g_settings.filters[index];
-    let newfilter: Filter = {
-        name: original.name,
-        folder: folder,
-        enabled: original.enabled,
-        conditions: [],
-        ocrEnabled: !!req.body.ocr_enabled,
-        ocrLeft: parseInt(req.body.ocr_left),
-        ocrTop: parseInt(req.body.ocr_top),
-        ocrWidth: parseInt(req.body.ocr_width),
-        ocrHeight: parseInt(req.body.ocr_height),
-        ocrR: parseInt(req.body.ocr_r),
-        ocrG: parseInt(req.body.ocr_g),
-        ocrB: parseInt(req.body.ocr_b),
-        ocrSpace: req.body.ocr_space,
-        ocrThreshold: Number(req.body.ocr_threshold)
-    };
-    if (Array.isArray(req.body.left)) {
-        for (let i = 0; i < req.body.left.length; i++) {
+    });
+
+    router.post('/filters/:filter/copy', async function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        let newname = req.query.newname;
+        if (typeof newname !== 'string') {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        let newindex = findFilter(newname);
+        if (!validateFilename(newname) || newindex >= 0) {
+            res.redirect(g_config.basepath + '/filters?status=error');
+            return;
+        }
+        await ignoreError(fs.promises.copyFile(
+            path.join(g_config.presetdir, filter),
+            path.join(g_config.presetdir, newname)
+        ));
+        let original = g_settings.filters[index];
+        let newfilter: Filter = {
+            name: newname,
+            folder: original.folder,
+            enabled: original.enabled,
+            conditions: [],
+            ocrEnabled: original.ocrEnabled,
+            ocrLeft: original.ocrLeft,
+            ocrTop: original.ocrTop,
+            ocrWidth: original.ocrWidth,
+            ocrHeight: original.ocrHeight,
+            ocrR: original.ocrR,
+            ocrG: original.ocrG,
+            ocrB: original.ocrB,
+            ocrSpace: original.ocrSpace,
+            ocrThreshold: original.ocrThreshold
+        };
+        for (let condition of original.conditions) {
             newfilter.conditions.push({
-                left: parseInt(req.body.left[i]),
-                top: parseInt(req.body.top[i]),
-                width: parseInt(req.body.width[i]),
-                height: parseInt(req.body.height[i]),
-                operator: String(req.body.operator[i]),
-                threshold: Number(req.body.threshold[i])
+                left: condition.left,
+                top: condition.top,
+                width: condition.width,
+                height: condition.height,
+                operator: condition.operator,
+                threshold: condition.threshold
             });
         }
-    }
-    else {
-        newfilter.conditions.push({
-            left: parseInt(req.body.left),
-            top: parseInt(req.body.top),
-            width: parseInt(req.body.width),
-            height: parseInt(req.body.height),
-            operator: String(req.body.operator),
-            threshold: Number(req.body.threshold)
-        });
-    }
-
-    let imageBody = req.body.image.split(',')[1];
-    if (!imageBody) {
-        res.status(400);
+        if (index === g_settings.filters.length - 1) {
+            g_settings.filters.push(newfilter);
+        } else {
+            g_settings.filters = g_settings.filters
+                .slice(0, index + 1)
+                .concat(newfilter)
+                .concat(g_settings.filters.slice(index + 1));
+        }
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
         return;
-    }
-    g_settings.filters[index] = newfilter;
-    let bytes = Buffer.from(imageBody, 'base64');
-    fs.promises.writeFile(path.join(g_config.presetdir, filter), bytes);
-    saveSettings();
-    res.redirect(g_config.basepath + '/filters');
-});
+    });
 
-router.get('/images/:folder', async function (req, res) {
-    let folder = req.params.folder;
-    if (!validateFilename(folder)) {
-        res.status(404).end();
-        return;
-    }
-    let filelist = await listFiles(path.join(g_config.imagedir, folder));
-    filelist = filelist.filter(validateExtension);
-    if (req.query.type && req.query.type === 'json') {
-        res.json(filelist);
-    } else {
-        let pages = Math.ceil(filelist.length / g_settings.imagesPerPage);
-        let page = typeof req.query.page === 'string' ? parseInt(req.query.page) : 0;
-        filelist = filelist.slice(
-            g_settings.imagesPerPage * page,
-            g_settings.imagesPerPage * (page + 1)
-        );
-        let files = [];
-        for (let file of filelist) {
-            let meta: MetaData = {
-                width: 0,
-                height: 0,
-                filter: '',
-                text: ''
-            };
+    router.post('/filters/:filter/remove', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        g_settings.filters.splice(index, 1);
+        fs.unlink(path.join(g_config.presetdir, filter), function () { });
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/edit', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        let folder = req.body.folder;
+        if (!validateFilename(folder)) {
+            res.status(400);
+            return;
+        }
+        let count = req.body.left.length;
+        let original = g_settings.filters[index];
+        let newfilter: Filter = {
+            name: original.name,
+            folder: folder,
+            enabled: original.enabled,
+            conditions: [],
+            ocrEnabled: !!req.body.ocr_enabled,
+            ocrLeft: parseInt(req.body.ocr_left),
+            ocrTop: parseInt(req.body.ocr_top),
+            ocrWidth: parseInt(req.body.ocr_width),
+            ocrHeight: parseInt(req.body.ocr_height),
+            ocrR: parseInt(req.body.ocr_r),
+            ocrG: parseInt(req.body.ocr_g),
+            ocrB: parseInt(req.body.ocr_b),
+            ocrSpace: req.body.ocr_space,
+            ocrThreshold: Number(req.body.ocr_threshold)
+        };
+        if (Array.isArray(req.body.left)) {
+            for (let i = 0; i < req.body.left.length; i++) {
+                newfilter.conditions.push({
+                    left: parseInt(req.body.left[i]),
+                    top: parseInt(req.body.top[i]),
+                    width: parseInt(req.body.width[i]),
+                    height: parseInt(req.body.height[i]),
+                    operator: String(req.body.operator[i]),
+                    threshold: Number(req.body.threshold[i])
+                });
+            }
+        }
+        else {
+            newfilter.conditions.push({
+                left: parseInt(req.body.left),
+                top: parseInt(req.body.top),
+                width: parseInt(req.body.width),
+                height: parseInt(req.body.height),
+                operator: String(req.body.operator),
+                threshold: Number(req.body.threshold)
+            });
+        }
+
+        let imageBody = req.body.image.split(',')[1];
+        if (!imageBody) {
+            res.status(400);
+            return;
+        }
+        g_settings.filters[index] = newfilter;
+        let bytes = Buffer.from(imageBody, 'base64');
+        fs.promises.writeFile(path.join(g_config.presetdir, filter), bytes);
+        saveSettings();
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.get('/images/:folder', async function (req, res) {
+        let folder = req.params.folder;
+        if (!validateFilename(folder)) {
+            res.status(404).end();
+            return;
+        }
+        let filelist = await listFiles(path.join(g_config.imagedir, folder));
+        filelist = filelist.filter(validateExtension);
+        if (req.query.type && req.query.type === 'json') {
+            res.json(filelist);
+        } else {
+            let pages = Math.ceil(filelist.length / g_settings.imagesPerPage);
+            let page = typeof req.query.page === 'string' ? parseInt(req.query.page) : 0;
+            filelist = filelist.slice(
+                g_settings.imagesPerPage * page,
+                g_settings.imagesPerPage * (page + 1)
+            );
+            let files = [];
+            for (let file of filelist) {
+                let meta: MetaData = {
+                    width: 0,
+                    height: 0,
+                    filter: '',
+                    text: ''
+                };
+                try {
+                    let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+                    meta = JSON.parse(json);
+                } catch (e) {
+                }
+                meta['name'] = file;
+                files.push(meta);
+            }
+            res.render('images', {
+                param: {
+                    folder: folder,
+                    files: files,
+                    page: page,
+                    pages: pages
+                }
+            });
+        }
+    });
+
+    router.get('/images/:folder/:file', async function (req, res) {
+        let folder = req.params.folder;
+        let file = req.params.file;
+        if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+            res.status(404).end();
+            return;
+        }
+        let image = path.join(g_config.imagedir, folder, file);
+        if (req.query.type === 'json') {
             try {
                 let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-                meta = JSON.parse(json);
-            } catch (e) {
-            }
-            meta['name'] = file;
-            files.push(meta);
+                res.json(JSON.parse(json));
+                return;
+            } catch (e) { }
+            try {
+                let dimension = await getImageDimension(image);
+                res.json(dimension);
+                return;
+            } catch (e) { }
+            res.json({ width: 0, height: 0 });
+            return;
         }
-        res.render('images', {
-            param: {
-                folder: folder,
-                files: files,
-                page: page,
-                pages: pages
+        if (req.query.type === 'thumb') {
+            let thumb = path.join(g_config.thumbdir, folder, file + '.png');
+            let statimage: fs.Stats;
+            let statthumb: fs.Stats;
+            try {
+                statimage = await fs.promises.stat(image);
+            } catch (e) {
+                res.status(404).end();
+                return;
             }
-        });
-    }
-});
+            await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder), { recursive: true }));
+            statthumb = await ignoreError(fs.promises.stat(thumb));
+            if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
+                try {
+                    await resize(image, thumb, 256, 256);
+                } catch (e) { }
+            }
+            res.sendFile(thumb);
+            return;
+        }
+        res.sendFile(image);
+    });
 
-router.get('/images/:folder/:file', async function (req, res) {
-    let folder = req.params.folder;
-    let file = req.params.file;
-    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
-        res.status(404).end();
-        return;
-    }
-    let image = path.join(g_config.imagedir, folder, file);
-    if (req.query.type === 'json') {
-        try {
-            let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-            res.json(JSON.parse(json));
+    router.get('/images/:folder/:file/edittext', async function (req, res) {
+        let folder = req.params.folder;
+        let file = req.params.file;
+        if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+            res.status(404).end();
             return;
-        } catch (e) {}
+        }
+        let searching = ('string' === typeof req.query.q);
+
         try {
-            let dimension = await getImageDimension(image);
-            res.json(dimension);
-            return;
-        } catch (e) { }
-        res.json({ width: 0, height: 0 });
-        return;
-    }
-    if (req.query.type === 'thumb') {
-        let thumb = path.join(g_config.thumbdir, folder, file + '.png');
-        let statimage: fs.Stats;
-        let statthumb: fs.Stats;
-        try {
-            statimage = await fs.promises.stat(image);
+            await fs.promises.stat(path.join(g_config.imagedir, folder, file));
         } catch (e) {
             res.status(404).end();
             return;
         }
-        await ignoreError(fs.promises.mkdir(path.join(g_config.thumbdir, folder), { recursive: true }));
-        statthumb = await ignoreError(fs.promises.stat(thumb));
-        if (!statthumb || statthumb.mtimeMs < statimage.mtimeMs) {
-            try {
-                await resize(image, thumb, 256, 256);
-            } catch (e) {}
+
+        let meta: MetaData = {
+            width: 0,
+            height: 0,
+            filter: '',
+            text: ''
+        };
+        try {
+            let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+            meta = JSON.parse(json);
+        } catch (e) {
         }
-        res.sendFile(thumb);
-        return;
-    }
-    res.sendFile(image);
-});
+        res.render('edittext', {
+            param: {
+                folder: folder,
+                file: file,
+                text: meta.text,
+                search_q: req.query.q,
+                search_folder: req.query.folder,
+                search_page: req.query.page,
+                searching: searching
+            }
+        });
+    });
 
-router.get('/images/:folder/:file/edittext', async function (req, res) {
-    let folder = req.params.folder;
-    let file = req.params.file;
-    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
-        res.status(404).end();
-        return;
-    }
-    let searching = ('string' === typeof req.query.q);
+    router.post('/images/:folder/:file/edittext', async function (req, res) {
+        let folder = req.params.folder;
+        let file = req.params.file;
+        if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+            res.status(404).end();
+            return;
+        }
+        let searching = ('string' === typeof req.body.q);
 
-    try {
-        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
-    } catch (e) {
-        res.status(404).end();
-        return;
-    }
+        try {
+            await fs.promises.stat(path.join(g_config.imagedir, folder, file));
+        } catch (e) {
+            res.status(404).end();
+            return;
+        }
 
-    let meta: MetaData = {
-        width: 0,
-        height: 0,
-        filter: '',
-        text: ''
-    };
-    try {
-        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-        meta = JSON.parse(json);
-    } catch (e) {
-    }
-    res.render('edittext', {
-        param: {
-            folder: folder,
-            file: file,
-            text: meta.text,
-            search_q: req.query.q,
-            search_folder: req.query.folder,
-            search_page: req.query.page,
-            searching: searching
+        let meta: MetaData = {
+            width: 0,
+            height: 0,
+            filter: '',
+            text: ''
+        };
+        try {
+            let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
+            meta = JSON.parse(json);
+        } catch (e) {
+        }
+        meta.text = req.body.text.replace(/[\n\r]/g, '');
+
+        await ignoreError(fs.promises.writeFile(
+            path.join(g_config.imagedir, folder, file + '.json'),
+            JSON.stringify(meta)
+        ));
+        await textdb.set(folder, file, meta.text);
+
+        if (searching) {
+            let query = 'q=' + req.body.q;
+            query += '&folder=' + req.body.folder;
+            query += '&page=' + req.body.page;
+            res.redirect(g_config.basepath + '/search?' + query);
+        } else {
+            res.redirect(g_config.basepath + '/images/' + folder);
         }
     });
-});
 
-router.post('/images/:folder/:file/edittext', async function (req, res) {
-    let folder = req.params.folder;
-    let file = req.params.file;
-    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
-        res.status(404).end();
-        return;
-    }
-    let searching = ('string' === typeof req.body.q);
+    router.post('/images/:folder/:file/revert', async function (req, res) {
+        let folder = req.params.folder;
+        let file = req.params.file;
+        if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
+            res.status(404).end();
+            return;
+        }
+        if (folder !== g_config.unclassifieddir) {
+            await revertFile(folder, file);
+        }
+        if ('q' in req.body) {
+            let query = 'q=' + req.body.q;
+            query += '&folder=' + req.body.folder;
+            query += '&page=' + req.body.page;
+            res.redirect(g_config.basepath + '/search?' + query);
+        } else {
+            res.redirect(g_config.basepath + '/images/' + folder);
+        }
+    });
 
-    try {
-        await fs.promises.stat(path.join(g_config.imagedir, folder, file));
-    } catch (e) {
-        res.status(404).end();
-        return;
-    }
+    router.get('/search', async function (req, res) {
+        let folder = req.query.folder;
+        if (typeof folder !== 'string' || !validateFilename(folder)) {
+            folder = '';
+        }
+        let q = ('string' === typeof req.query.q) ? req.query.q : '';
+        let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
 
-    let meta: MetaData = {
-        width: 0,
-        height: 0,
-        filter: '',
-        text: ''
-    };
-    try {
-        let json = await fs.promises.readFile(path.join(g_config.imagedir, folder, file + '.json'), 'utf-8');
-        meta = JSON.parse(json);
-    } catch (e) {
-    }
-    meta.text = req.body.text.replace(/[\n\r]/g, '');
+        if ('string' !== typeof req.query.q) {
+            let folders = await listDirectories(g_config.imagedir);
+            res.render('search', {
+                param: {
+                    files: [],
+                    q: '',
+                    folder: '',
+                    folders: folders,
+                    page: 0,
+                    pages: 1
+                }
+            });
+            return;
+        }
+        let keywords = q.split(/\s+/);
+        let results = await textdb.search(keywords, folder, g_settings.enableFuzzySearch);
+        let pages = Math.max(1, Math.ceil(results.length / g_settings.imagesPerPage));
+        results.sort(function (a, b) {
+            let aa = a.folder + '/' + a.file;
+            let bb = b.folder + '/' + b.file;
+            return aa < bb ? -1 : aa > bb ? 1 : 0;
+        });
+        results = results.slice(
+            g_settings.imagesPerPage * page,
+            g_settings.imagesPerPage * (page + 1)
+        );
 
-    await ignoreError(fs.promises.writeFile(
-        path.join(g_config.imagedir, folder, file + '.json'),
-        JSON.stringify(meta)
-    ));
-    await textdb.set(folder, file, meta.text);
-
-    if (searching) {
-        let query = 'q=' + req.body.q;
-        query += '&folder=' + req.body.folder;
-        query += '&page=' + req.body.page;
-        res.redirect(g_config.basepath + '/search?' + query);
-    } else {
-        res.redirect(g_config.basepath + '/images/' + folder);
-    }
-});
-
-router.post('/images/:folder/:file/revert', async function (req, res) {
-    let folder = req.params.folder;
-    let file = req.params.file;
-    if (!validateFilename(folder) || !validateFilename(file) || !validateExtension(file)) {
-        res.status(404).end();
-        return;
-    }
-    if (folder !== g_config.unclassifieddir) {
-        await revertFile(folder, file);
-    }
-    if ('q' in req.body) {
-        let query = 'q=' + req.body.q;
-        query += '&folder=' + req.body.folder;
-        query += '&page=' + req.body.page;
-        res.redirect(g_config.basepath + '/search?' + query);
-    } else {
-        res.redirect(g_config.basepath + '/images/' + folder);
-    }
-});
-
-router.get('/search', async function (req, res) {
-    let folder = req.query.folder;
-    if (typeof folder !== 'string' || !validateFilename(folder)) {
-        folder = '';
-    }
-    let q = ('string' === typeof req.query.q) ? req.query.q : '';
-    let page = ('string' === typeof req.query.page) ? parseInt(req.query.page) : 0;
-
-    if ('string' !== typeof req.query.q) {
+        let files = [];
+        if ('string' === typeof req.query.q) {
+            for (let result of results) {
+                let meta: MetaData = {
+                    width: 0,
+                    height: 0,
+                    filter: '',
+                    text: ''
+                };
+                try {
+                    let json = await fs.promises.readFile(path.join(g_config.imagedir, result.folder, result.file + '.json'), 'utf-8');
+                    meta = JSON.parse(json);
+                } catch (e) {
+                }
+                meta['folder'] = result.folder;
+                meta['name'] = result.file;
+                files.push(meta);
+            }
+        }
         let folders = await listDirectories(g_config.imagedir);
         res.render('search', {
             param: {
-                files: [],
-                q: '',
-                folder: '',
+                files: files,
+                q: q,
+                folder: folder,
                 folders: folders,
-                page: 0,
-                pages: 1
+                page: page,
+                pages: pages
             }
         });
-        return;
-    }
-    let keywords = q.split(/\s+/);
-    let results = await textdb.search(keywords, folder, g_settings.enableFuzzySearch);
-    let pages = Math.max(1, Math.ceil(results.length / g_settings.imagesPerPage));
-    results.sort(function (a, b) {
-        let aa = a.folder + '/' + a.file;
-        let bb = b.folder + '/' + b.file;
-        return aa < bb ? -1 : aa > bb ? 1 : 0;
     });
-    results = results.slice(
-        g_settings.imagesPerPage * page,
-        g_settings.imagesPerPage * (page + 1)
-    );
 
-    let files = [];
-    if ('string' === typeof req.query.q) {
-        for (let result of results) {
-            let meta: MetaData = {
-                width: 0,
-                height: 0,
-                filter: '',
-                text: ''
-            };
-            try {
-                let json = await fs.promises.readFile(path.join(g_config.imagedir, result.folder, result.file + '.json'), 'utf-8');
-                meta = JSON.parse(json);
-            } catch (e) {
-            }
-            meta['folder'] = result.folder;
-            meta['name'] = result.file;
-            files.push(meta);
-        }
-    }
-    let folders = await listDirectories(g_config.imagedir);
-    res.render('search', {
-        param: {
-            files: files,
-            q: q,
-            folder: folder,
-            folders: folders,
-            page: page,
-            pages: pages
+    router.get('/log', async function (req, res) {
+        if (req.query.type === 'json') {
+            res.json(g_log);
+        } else {
+            res.render('log', {
+                param: {
+                    log: g_log
+                }
+            });
         }
     });
-});
 
-router.get('/log', async function (req, res) {
-    if (req.query.type === 'json') {
-        res.json(g_info);
-    } else {
-        res.render('log', {
+    router.get('/settings', async function (req, res) {
+        let folders = await listDirectories(g_config.imagedir);
+        res.render('settings', {
             param: {
-                log: g_info
+                imagesPerPage: g_settings.imagesPerPage,
+                enableFuzzySearch: g_settings.enableFuzzySearch,
+                unmatcheddir: g_config.unmatcheddir,
+                unclassifieddir: g_config.unclassifieddir,
+                folders: folders
             }
         });
-    }
-});
-
-router.get('/settings', async function (req, res) {
-    let folders = await listDirectories(g_config.imagedir);
-    res.render('settings', {
-        param: {
-            imagesPerPage: g_settings.imagesPerPage,
-            enableFuzzySearch: g_settings.enableFuzzySearch,
-            unmatcheddir: g_config.unmatcheddir,
-            unclassifieddir: g_config.unclassifieddir,
-            folders: folders
-        }
     });
-});
 
-router.post('/settings', function (req, res) {
-    g_settings.enableFuzzySearch = !!req.body.enable_fuzzy_search;
+    router.post('/settings', function (req, res) {
+        g_settings.enableFuzzySearch = !!req.body.enable_fuzzy_search;
 
-    if (req.body.images_per_page === '20') {
+        if (req.body.images_per_page === '20') {
+            g_settings.imagesPerPage = 20;
+        }
+        if (req.body.images_per_page === '50') {
+            g_settings.imagesPerPage = 50;
+        }
+        if (req.body.images_per_page === '100') {
+            g_settings.imagesPerPage = 100;
+        }
+        if (req.body.images_per_page === '200') {
+            g_settings.imagesPerPage = 200;
+        }
+        saveSettings();
+        res.redirect(g_config.basepath + '/settings');
+    });
+
+    router.post('/settings/refresh', function (req, res) {
+        (async function () {
+            info('検索インデックスの作成を開始します');
+            textdb.refresh();
+            info('検索インデックスの作成が完了しました');
+        })();
+        res.redirect(g_config.basepath + '/settings');
+    });
+
+    router.post('/settings/revert', async function (req, res) {
+        let folder = req.body.folder;
+        if (!validateFilename(folder)) {
+            res.status(400).end();
+            return;
+        }
+
+        try {
+            if (folder !== g_config.unclassifieddir) {
+                let filelist = await listFiles(path.join(g_config.imagedir, folder));
+                filelist = filelist.filter(validateExtension);
+                for (let file of filelist) {
+                    await revertFile(folder, file);
+                }
+            }
+        } catch (e) { }
+        res.redirect(g_config.basepath + '/settings');
+    });
+
+    router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
+
+    let app = express();
+    app.set('views', path.join(__dirname, 'views'));
+    app.set('view engine', 'pug');
+    app.set('port', process.env.PORT || 3000);
+    app.use(g_config.basepath, router);
+
+    let server = app.listen(app.get('port'), function () {
+        console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
+        info('ESFilter を起動しました - フィルターの自動実行が' + (g_settings.autofilterenabled ? '有' : '無') + '効です');
+    });
+}
+
+async function initializeGlobals() {
+    g_config = <Config>JSON.parse(await fs.promises.readFile('config.json', 'utf8'));
+
+    g_settings = <Settings>{};
+    try {
+        await fs.promises.copyFile(
+            path.join(__dirname, 'settings.json'),
+            path.join(__dirname, 'settings.json.bak')
+        );
+        g_settings = <Settings>JSON.parse(await fs.promises.readFile('settings.json', 'utf8'));
+    }
+    catch (e) {
+        g_settings = {
+            autofilterenabled: false,
+            imagesPerPage: 50,
+            enableFuzzySearch: true,
+            filters: []
+        };
+    }
+    if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
         g_settings.imagesPerPage = 20;
     }
-    if (req.body.images_per_page === '50') {
-        g_settings.imagesPerPage = 50;
-    }
-    if (req.body.images_per_page === '100') {
-        g_settings.imagesPerPage = 100;
-    }
-    if (req.body.images_per_page === '200') {
-        g_settings.imagesPerPage = 200;
-    }
-    saveSettings();
-    res.redirect(g_config.basepath + '/settings');
-});
 
-router.post('/settings/refresh', function (req, res) {
+    g_config.basepath = g_config.basepath.replace(/^(\/)?/, '/').replace(/\/$/, '');
+    g_config.thumbdir = path.resolve(g_config.thumbdir);
+    g_config.imagedir = path.resolve(g_config.imagedir);
+    g_config.presetdir = path.resolve(g_config.presetdir);
+    await fs.promises.mkdir(g_config.thumbdir, { recursive: true });
+    await fs.promises.mkdir(path.join(g_config.imagedir, g_config.unclassifieddir), { recursive: true });
+    await fs.promises.mkdir(g_config.presetdir, { recursive: true });
+
+    g_ocrWorkerInitialized = initializeOcrWorker();
+
     (async function () {
         info('検索インデックスの作成を開始します');
-        textdb.refresh();
+        await textdb.initialize(
+            g_config.imagedir,
+            path.join(__dirname, 'textdb.json'),
+            g_config.conversiontable
+        );
         info('検索インデックスの作成が完了しました');
     })();
-    res.redirect(g_config.basepath + '/settings');
-});
 
-router.post('/settings/revert', async function (req, res) {
-    let folder = req.body.folder;
-    if (!validateFilename(folder)) {
-        res.status(400).end();
-        return;
-    }
+    beginWorker();
+}
 
-    try {
-        if (folder !== g_config.unclassifieddir) {
-            let filelist = await listFiles(path.join(g_config.imagedir, folder));
-            filelist = filelist.filter(validateExtension);
-            for (let file of filelist) {
-                await revertFile(folder, file);
-            }
-        }
-    } catch (e) { }
-    res.redirect(g_config.basepath + '/settings');
-});
+async function main() {
+    await initializeGlobals();
+    startExpress();
+}
 
-router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
-
-g_ocrWorkerInitialized = initializeOcrWorker();
-
-(async function () {
-    info('検索インデックスの作成を開始します');
-    await textdb.initialize(
-        g_config.imagedir,
-        path.join(__dirname, 'textdb.json'),
-        g_config.conversiontable
-    );
-    info('検索インデックスの作成が完了しました');
-})();
-
-beginWorker();
-
-let app = express();
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'pug');
-app.set('port', process.env.PORT || 3000);
-app.use(g_config.basepath, router);
-
-let server = app.listen(app.get('port'), function () {
-    console.log('Express server listening on port ' + (<net.AddressInfo>server.address()).port);
-    info('ESFilter を起動しました - フィルターの自動実行が' + (g_settings.autofilterenabled ? '有' : '無') + '効です');
-});
-
+main();
