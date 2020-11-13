@@ -59,37 +59,20 @@ function run() {
     }
 }
 
-window['enable'] = enable;
-function enable() {
-    let filter = findCheckedFilter();
-    if (filter) {
-        post('filters/' + filter + '/enable');
-    }
+function defineEndpoint(name: string) {
+    window[name] = () => {
+        let filter = findCheckedFilter();
+        if (filter) {
+            post('filters/' + filter + '/' + name);
+        }
+    };
 }
-
-window['disable'] = disable;
-function disable() {
-    let filter = findCheckedFilter();
-    if (filter) {
-        post('filters/' + filter + '/disable');
-    }
-}
-
-window['up'] = up;
-function up() {
-    let filter = findCheckedFilter();
-    if (filter) {
-        post('filters/' + filter + '/up');
-    }
-}
-
-window['down'] = down;
-function down() {
-    let filter = findCheckedFilter();
-    if (filter) {
-        post('filters/' + filter + '/down');
-    }
-}
+defineEndpoint('enable');
+defineEndpoint('disable');
+defineEndpoint('up');
+defineEndpoint('down');
+defineEndpoint('upmost');
+defineEndpoint('downmost');
 
 window['rename'] = rename;
 function rename(copy?: boolean) {

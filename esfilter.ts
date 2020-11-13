@@ -672,6 +672,38 @@ function startExpress() {
         res.redirect(g_config.basepath + '/filters');
     });
 
+    router.post('/filters/:filter/upmost', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        if (index > 0) {
+            let tmp = g_settings.filters[index];
+            g_settings.filters.splice(index, 1);
+            g_settings.filters.unshift(tmp);
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
+
+    router.post('/filters/:filter/downmost', function (req, res) {
+        let filter = req.params.filter;
+        let index = findFilter(filter);
+        if (!validateFilename(filter) || index < 0) {
+            res.status(404);
+            return;
+        }
+        if (index + 1 < g_settings.filters.length) {
+            let tmp = g_settings.filters[index];
+            g_settings.filters.splice(index, 1);
+            g_settings.filters.push(tmp);
+            saveSettings();
+        }
+        res.redirect(g_config.basepath + '/filters');
+    });
+
     router.post('/filters/:filter/rename', async function (req, res) {
         let filter = req.params.filter;
         let index = findFilter(filter);
