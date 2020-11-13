@@ -3,6 +3,7 @@ import express = require('express');
 import path = require('path');
 import net = require('net');
 import fs = require('fs');
+import zlib = require('zlib');
 import bodyParser = require('body-parser');
 import canvas = require('canvas');
 import tesseract = require('tesseract.js');
@@ -18,6 +19,8 @@ class MetaData {
 };
 class Config {
     basepath: string;
+    tessdatadir: string;
+    defaulttraineddata: string;
     thumbdir: string;
     imagedir: string;
     presetdir: string;
@@ -49,6 +52,7 @@ class Filter {
     ocrB: number;
     ocrSpace: string;
     ocrThreshold: number;
+    ocrTrainedData: string;
 };
 class Settings {
     autofilterenabled: boolean;
@@ -62,7 +66,7 @@ let g_busy = false;
 
 let g_config: Config;
 let g_settings: Settings;
-let g_worker: tesseract.Worker;
+let g_workers: { [key: string]: tesseract.Worker };
 let g_ocrWorkerInitialized: Promise<void>;
 
 function formatDate(date: Date) {
@@ -207,10 +211,58 @@ async function resize(input: string, output: string, width: number, height: numb
 
 async function initializeOcrWorker()
 {
-    g_worker = tesseract.createWorker();
-    await g_worker.load();
-    await g_worker.loadLanguage('jpn');
-    await g_worker.initialize('jpn');
+    let gzip = function (buffer) {
+        return new Promise<Buffer>(function (resolve, reject) {
+            zlib.gzip(buffer, function (error, result) {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(result);
+                }
+            });
+        })
+    };
+    let unzip = function (buffer) {
+        return new Promise<Buffer>(function (resolve, reject) {
+            zlib.unzip(buffer, function (error, result) {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(result);
+                }
+            });
+        })
+    };
+    g_workers = {};
+    const files = await fs.promises.readdir(g_config.tessdatadir);
+    for (const file of files) {
+        if (file.endsWith('.traineddata')) {
+            if (!files.includes(file + '.gz')) {
+                let content = await fs.promises.readFile(g_config.tessdatadir + '/' + file);
+                let compressed = await gzip(content);
+                fs.promises.writeFile(g_config.tessdatadir + '/' + file + '.gz', compressed);
+            }
+            let prefix = file.replace(/\.traineddata$/, '');
+            let worker = tesseract.createWorker({ 'langPath': g_config.tessdatadir });
+            await worker.load();
+            await worker.loadLanguage(prefix);
+            await worker.initialize(prefix);
+            g_workers[prefix] = worker;
+        }
+        if (file.endsWith('.traineddata.gz')) {
+            if (!files.includes(file.replace(/\.gz$/, ''))) {
+                let content = await fs.promises.readFile(g_config.tessdatadir + '/' + file);
+                let decompressed = await unzip(content);
+                fs.promises.writeFile(g_config.tessdatadir + '/' + file.replace(/\.gz$/, ''), decompressed);
+                let prefix = file.replace(/\.traineddata\.gz$/, '');
+                let worker = tesseract.createWorker({ 'langPath': g_config.tessdatadir });
+                await worker.load();
+                await worker.loadLanguage(prefix);
+                await worker.initialize(prefix);
+                g_workers[prefix] = worker;
+            }
+        }
+    }
     info('文字認識エンジンの初期化が完了しました');
 }
 
@@ -235,7 +287,7 @@ async function runOcr(image: ImageData, filter: Filter, resultFile: string) {
     });
     c.createPNGStream().pipe(out);
     await promise;
-    let result = await g_worker.recognize('ocrtemp.png');
+    let result = await g_workers[filter.ocrTrainedData].recognize('ocrtemp.png');
     return result.data.text.replace(/\s/g, '');
 }
 
@@ -505,7 +557,8 @@ function startExpress() {
             ocrG: 255,
             ocrB: 255,
             ocrSpace: 'rgb',
-            ocrThreshold: 10
+            ocrThreshold: 10,
+            ocrTrainedData: g_config.defaulttraineddata
         });
         saveSettings();
         res.redirect(g_config.basepath + '/filters/' + filter);
@@ -539,7 +592,8 @@ function startExpress() {
             param: {
                 filter: g_settings.filters[index],
                 image: mime + image,
-                folders: await listDirectories(g_config.imagedir)
+                folders: await listDirectories(g_config.imagedir),
+                trainedData: Object.keys(g_workers)
             }
         });
     });
@@ -681,7 +735,8 @@ function startExpress() {
             ocrG: original.ocrG,
             ocrB: original.ocrB,
             ocrSpace: original.ocrSpace,
-            ocrThreshold: original.ocrThreshold
+            ocrThreshold: original.ocrThreshold,
+            ocrTrainedData: original.ocrTrainedData
         };
         for (let condition of original.conditions) {
             newfilter.conditions.push({
@@ -731,6 +786,11 @@ function startExpress() {
             res.status(400);
             return;
         }
+        let ocrTrainedData = req.body.ocr_trained_data;
+        if (typeof (ocrTrainedData) !== 'string' || !g_workers[ocrTrainedData]) {
+            res.status(400);
+            return;
+        }
         let count = req.body.left.length;
         let original = g_settings.filters[index];
         let newfilter: Filter = {
@@ -747,7 +807,8 @@ function startExpress() {
             ocrG: parseInt(req.body.ocr_g),
             ocrB: parseInt(req.body.ocr_b),
             ocrSpace: req.body.ocr_space,
-            ocrThreshold: Number(req.body.ocr_threshold)
+            ocrThreshold: Number(req.body.ocr_threshold),
+            ocrTrainedData: ocrTrainedData
         };
         if (Array.isArray(req.body.left)) {
             for (let i = 0; i < req.body.left.length; i++) {
@@ -1118,6 +1179,7 @@ function startExpress() {
     });
 
     router.use('/scripts', express.static(path.join(__dirname, 'public', 'scripts')));
+    router.use('/tessdata', express.static(g_config.tessdatadir));
 
     let app = express();
     app.set('views', path.join(__dirname, 'views'));
@@ -1153,8 +1215,14 @@ async function initializeGlobals() {
     if (!g_settings.imagesPerPage || g_settings.imagesPerPage < 20) {
         g_settings.imagesPerPage = 20;
     }
+    for (let filter of g_settings.filters) {
+        if (!filter.ocrTrainedData) {
+            filter.ocrTrainedData = g_config.defaulttraineddata;
+        }
+    }
 
     g_config.basepath = g_config.basepath.replace(/^(\/)?/, '/').replace(/\/$/, '');
+    g_config.tessdatadir = path.resolve(g_config.tessdatadir);
     g_config.thumbdir = path.resolve(g_config.thumbdir);
     g_config.imagedir = path.resolve(g_config.imagedir);
     g_config.presetdir = path.resolve(g_config.presetdir);

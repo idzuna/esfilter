@@ -486,7 +486,7 @@ async function testLoad() {
     document.getElementById('test_message').innerText = 'ロード完了';
 }
 
-let g_worker;
+let g_workers = [];
 
 window['testExec'] = testExec;
 async function testExec() {
@@ -518,6 +518,7 @@ async function testExec() {
         space: <any>(<HTMLSelectElement>document.getElementsByName('ocr_space')[0]).value,
         distance: Number(getInputElement('ocr_threshold').value)
     };
+    let worker;
     if (ocrEnabled) {
         let th = document.createElement('th');
         th.innerText = 'プレフィルター・文字認識結果';
@@ -526,12 +527,14 @@ async function testExec() {
 
         document.getElementById('test_message').innerText = '文字認識エンジン初期化中';
 
-        if (!g_worker) {
-            g_worker = window['Tesseract'].createWorker();
-            await g_worker.load();
-            await g_worker.loadLanguage('jpn');
-            await g_worker.initialize('jpn');
+        let ocrTrainedData = (<HTMLSelectElement>document.getElementsByName('ocr_trained_data')[0]).selectedOptions[0].value;
+        if (!g_workers[ocrTrainedData]) {
+            g_workers[ocrTrainedData] = window['Tesseract'].createWorker({ langPath: '../tessdata' });
+            await g_workers[ocrTrainedData].load();
+            await g_workers[ocrTrainedData].loadLanguage(ocrTrainedData);
+            await g_workers[ocrTrainedData].initialize(ocrTrainedData);
         }
+        worker = g_workers[ocrTrainedData];
     }
     document.getElementById('test_message').innerText = '計算中';
 
@@ -596,7 +599,7 @@ async function testExec() {
                 height: parseInt(getInputElement('ocr_height').value)
             };
             prefilter.prefilter(canvas, data, area, ocrOptions);
-            let result = await g_worker.recognize(canvas);
+            let result = await worker.recognize(canvas);
             td.appendChild(document.createElement('br'));
             td.appendChild(document.createTextNode((<string>result.data.text).replace(/ /g, '')));
         }
